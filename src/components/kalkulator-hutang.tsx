@@ -257,7 +257,8 @@ export default function KalkulatorHutang() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Apply items-start to the grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 <FormField
                   control={form.control}
                   name="nama"
@@ -275,7 +276,7 @@ export default function KalkulatorHutang() {
                   control={form.control}
                   name="tanggal"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem className="flex flex-col"> {/* Keep flex-col for label above button */}
                        <FormLabel>Tanggal</FormLabel>
                        <Popover>
                          <PopoverTrigger asChild>
@@ -283,7 +284,7 @@ export default function KalkulatorHutang() {
                              <Button
                                variant={'outline'}
                                className={cn(
-                                 'w-full pl-3 text-left font-normal rounded-lg shadow-sm',
+                                 'w-full pl-3 text-left font-normal rounded-lg shadow-sm', // Removed justify-start, text-left handles it
                                  !field.value && 'text-muted-foreground'
                                )}
                              >
@@ -329,11 +330,6 @@ export default function KalkulatorHutang() {
                               placeholder="Contoh: 500000"
                               {...field}
                               className="pl-8 rounded-lg shadow-sm"
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                field.onChange(value === '' ? '' : Number(value));
-                              }}
-                              value={field.value === 0 && form.formState.dirtyFields.nominal ? '0' : (field.value || '')}
                            />
                         </div>
                       </FormControl>
