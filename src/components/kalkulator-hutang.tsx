@@ -2,7 +2,7 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // Added useCallback
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -50,7 +50,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { Textarea } from '@/components/ui/textarea';
+import { PasswordDialog } from '@/components/password-dialog'; // Import PasswordDialog
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -73,7 +74,7 @@ const formSchema = z.object({
     .number()
     .positive({ message: 'Nominal harus lebih dari 0' }),
   status: z.nativeEnum(StatusHutang),
-  deskripsi: z.string().optional(), // Add optional description field
+  deskripsi: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -82,10 +83,18 @@ interface Hutang extends FormValues {
   id: string; // Make ID required for Hutang interface
 }
 
+type PendingAction =
+  | { type: 'add'; data: FormValues }
+  | { type: 'edit'; data: FormValues; id: string }
+  | { type: 'delete'; id: string }
+  | null;
+
 export default function KalkulatorHutang() {
   const [daftarHutang, setDaftarHutang] = useState<Hutang[]>([]);
   const [totalHutang, setTotalHutang] = useState<number>(0);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null); // State for pending action
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
@@ -95,7 +104,7 @@ export default function KalkulatorHutang() {
       tanggal: new Date(),
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
-      deskripsi: '', // Default description
+      deskripsi: '',
     },
   });
 
@@ -118,35 +127,24 @@ export default function KalkulatorHutang() {
     }
   }, []);
 
-  // Save data to localStorage whenever daftarHutang changes
-  useEffect(() => {
-    localStorage.setItem('daftarHutang', JSON.stringify(daftarHutang));
-    hitungTotalHutang();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [daftarHutang]);
-
-  // Calculate total debt whenever the list changes
-   const hitungTotalHutang = () => {
+  // Calculate total debt whenever the list changes (using useCallback)
+  const hitungTotalHutang = useCallback(() => {
     const total = daftarHutang.reduce((sum, hutang) => {
-      // Only sum debts that are not fully paid
       return hutang.status !== StatusHutang.LUNAS ? sum + hutang.nominal : sum;
     }, 0);
     setTotalHutang(total);
-  };
+  }, [daftarHutang]); // Dependency on daftarHutang
 
 
-  const onSubmit: SubmitHandler<FormValues> = (data) => {
-    if (editingId) {
-      // Update existing debt
-      setDaftarHutang((prev) =>
-        prev.map((hutang) =>
-          hutang.id === editingId ? { ...data, id: editingId } : hutang
-        )
-      );
-      toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
-      setEditingId(null); // Exit editing mode
-    } else {
-      // Check if debt with the same name already exists and is not 'Lunas'
+  // Save data to localStorage and recalculate total whenever daftarHutang changes
+  useEffect(() => {
+    localStorage.setItem('daftarHutang', JSON.stringify(daftarHutang));
+    hitungTotalHutang();
+  }, [daftarHutang, hitungTotalHutang]); // Added hitungTotalHutang to dependency array
+
+
+  const executeAdd = (data: FormValues) => {
+     // Check if debt with the same name already exists and is not 'Lunas'
       const existingHutangIndex = daftarHutang.findIndex(
         (h) => h.nama.toLowerCase() === data.nama.toLowerCase() && h.status !== StatusHutang.LUNAS
       );
@@ -180,17 +178,33 @@ export default function KalkulatorHutang() {
         setDaftarHutang((prev) => [...prev, newHutang]);
         toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
       }
-    }
-    form.reset({ // Reset form with default values
+      form.reset({
+        nama: '',
+        tanggal: new Date(),
+        nominal: 0,
+        status: StatusHutang.BELUM_LUNAS,
+        deskripsi: '',
+      });
+  };
+
+  const executeEdit = (data: FormValues, id: string) => {
+    setDaftarHutang((prev) =>
+      prev.map((hutang) =>
+        hutang.id === id ? { ...data, id } : hutang
+      )
+    );
+    toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
+    setEditingId(null); // Exit editing mode
+    form.reset({
       nama: '',
       tanggal: new Date(),
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
-      deskripsi: '', // Reset description
+      deskripsi: '',
     });
   };
 
-  const handleDelete = (id: string) => {
+  const executeDelete = (id: string) => {
     setDaftarHutang((prev) => prev.filter((hutang) => hutang.id !== id));
      toast({
       title: 'Terhapus',
@@ -199,32 +213,69 @@ export default function KalkulatorHutang() {
     });
   };
 
-  const handleEdit = (hutang: Hutang) => {
-    setEditingId(hutang.id);
-    form.reset({ // Populate form with existing data
-      ...hutang,
-      tanggal: new Date(hutang.tanggal), // Ensure date is a Date object
-      deskripsi: hutang.deskripsi || '', // Populate description
-    });
+  // Trigger password dialog before submitting
+  const onSubmit: SubmitHandler<FormValues> = (data) => {
+    if (editingId) {
+      setPendingAction({ type: 'edit', data, id: editingId });
+    } else {
+      setPendingAction({ type: 'add', data });
+    }
+    setIsPasswordDialogOpen(true);
   };
+
+  // Trigger password dialog before deleting
+  const handleDelete = (id: string) => {
+    setPendingAction({ type: 'delete', id });
+    setIsPasswordDialogOpen(true);
+  };
+
+  // Handle editing (just populate form for now)
+   const handleEdit = (hutang: Hutang) => {
+     setEditingId(hutang.id);
+     form.reset({
+       ...hutang,
+       tanggal: new Date(hutang.tanggal),
+       deskripsi: hutang.deskripsi || '',
+     });
+   };
+
 
   const handleCancelEdit = () => {
      setEditingId(null);
-     form.reset({ // Reset form to defaults
+     form.reset({
        nama: '',
        tanggal: new Date(),
        nominal: 0,
        status: StatusHutang.BELUM_LUNAS,
-       deskripsi: '', // Reset description
+       deskripsi: '',
      });
    };
+
+  // Execute the stored action after password confirmation
+  const handlePasswordConfirm = () => {
+    if (!pendingAction) return;
+
+    switch (pendingAction.type) {
+      case 'add':
+        executeAdd(pendingAction.data);
+        break;
+      case 'edit':
+        executeEdit(pendingAction.data, pendingAction.id);
+        break;
+      case 'delete':
+        executeDelete(pendingAction.id);
+        break;
+    }
+    setPendingAction(null); // Clear pending action
+    // PasswordDialog already handles closing itself and showing success toast
+  };
 
   // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
-      minimumFractionDigits: 0, // Remove decimal places
+      minimumFractionDigits: 0,
     }).format(amount);
   };
 
@@ -257,8 +308,8 @@ export default function KalkulatorHutang() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Apply items-baseline to the grid for better vertical alignment */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-baseline">
+              {/* Align items to the end of the grid cell for vertical alignment */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-end">
                 <FormField
                   control={form.control}
                   name="nama"
@@ -276,42 +327,42 @@ export default function KalkulatorHutang() {
                   control={form.control}
                   name="tanggal"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col"> {/* Keep flex-col for label above */}
-                       <FormLabel>Tanggal</FormLabel>
-                       <Popover>
-                         <PopoverTrigger asChild>
-                           <FormControl>
-                             <Button
-                               variant={'outline'}
-                               className={cn(
-                                 'w-full pl-3 text-left font-normal rounded-lg shadow-sm', // Removed justify-start, text-left handles it
-                                 !field.value && 'text-muted-foreground'
-                               )}
-                             >
-                               {field.value ? (
-                                 format(field.value, 'PPP', { locale: id })
-                               ) : (
-                                 <span>Pilih tanggal</span>
-                               )}
-                               <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                             </Button>
-                           </FormControl>
-                         </PopoverTrigger>
-                         <PopoverContent className="w-auto p-0 rounded-lg shadow-lg" align="start">
-                           <Calendar
-                             mode="single"
-                             selected={field.value}
-                             onSelect={field.onChange}
-                             disabled={(date) =>
-                               date > new Date() || date < new Date('1900-01-01')
-                             }
-                             initialFocus
-                             locale={id}
-                           />
-                         </PopoverContent>
-                       </Popover>
-                       <FormMessage />
-                     </FormItem>
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Tanggal</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={'outline'}
+                              className={cn(
+                                'w-full pl-3 text-left font-normal rounded-lg shadow-sm',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? (
+                                format(field.value, 'PPP', { locale: id })
+                              ) : (
+                                <span>Pilih tanggal</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 rounded-lg shadow-lg" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            disabled={(date) =>
+                              date > new Date() || date < new Date('1900-01-01')
+                            }
+                            initialFocus
+                            locale={id}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
                   )}
                 />
                 <FormField
@@ -329,7 +380,7 @@ export default function KalkulatorHutang() {
                               type="number"
                               placeholder="Contoh: 500000"
                               {...field}
-                              className="pl-8 rounded-lg shadow-sm" // Ensure consistent height with other inputs
+                              className="pl-8 rounded-lg shadow-sm"
                            />
                         </div>
                       </FormControl>
@@ -345,7 +396,7 @@ export default function KalkulatorHutang() {
                       <FormLabel>Status</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="rounded-lg shadow-sm"> {/* Ensure consistent height */}
+                          <SelectTrigger className="rounded-lg shadow-sm">
                             <SelectValue placeholder="Pilih status hutang" />
                           </SelectTrigger>
                         </FormControl>
@@ -361,17 +412,16 @@ export default function KalkulatorHutang() {
                     </FormItem>
                   )}
                 />
-                {/* Add Description Field */}
                  <FormField
                   control={form.control}
                   name="deskripsi"
                   render={({ field }) => (
-                    <FormItem className="md:col-span-2"> {/* Span across two columns on medium screens */}
+                    <FormItem className="md:col-span-2">
                       <FormLabel>Deskripsi (Opsional)</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="Contoh: Pinjam buat makan siang, Beli jajan sore"
-                          className="rounded-lg shadow-sm resize-none" // Added resize-none
+                          className="rounded-lg shadow-sm resize-none"
                           {...field}
                         />
                       </FormControl>
@@ -383,7 +433,7 @@ export default function KalkulatorHutang() {
               <div className="flex justify-end space-x-2 pt-4">
                  {editingId && (
                    <Button type="button" variant="outline" onClick={handleCancelEdit} className="rounded-lg shadow-sm">
-                     Batal
+                     Batal Edit
                    </Button>
                  )}
                 <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg shadow-md">
@@ -407,7 +457,7 @@ export default function KalkulatorHutang() {
                  <TableRow>
                    <TableHead className="whitespace-nowrap">Nama</TableHead>
                    <TableHead className="whitespace-nowrap">Tanggal</TableHead>
-                   <TableHead className="whitespace-nowrap">Deskripsi</TableHead>{/* Add Description Header */}
+                   <TableHead className="whitespace-nowrap">Deskripsi</TableHead>
                    <TableHead className="text-right whitespace-nowrap">Nominal</TableHead>
                    <TableHead className="text-center whitespace-nowrap">Status</TableHead>
                    <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>
@@ -416,7 +466,7 @@ export default function KalkulatorHutang() {
                <TableBody>
                  {daftarHutang.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">{/* Updated colSpan to 6 */}
+                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                        Belum ada data hutang.
                      </TableCell>
                    </TableRow>
@@ -425,7 +475,7 @@ export default function KalkulatorHutang() {
                      <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150">
                        <TableCell className="font-medium">{hutang.nama}</TableCell>
                        <TableCell>{format(new Date(hutang.tanggal), 'dd MMMM yyyy', { locale: id })}</TableCell>
-                       <TableCell className="max-w-xs truncate text-muted-foreground">{hutang.deskripsi || '-'}</TableCell>{/* Add Description Cell */}
+                       <TableCell className="max-w-xs truncate text-muted-foreground">{hutang.deskripsi || '-'}</TableCell>
                        <TableCell className="text-right">{formatCurrency(hutang.nominal)}</TableCell>
                         <TableCell className="text-center">
                            <span className={cn(
@@ -458,6 +508,13 @@ export default function KalkulatorHutang() {
           </div>
         </CardFooter>
       </Card>
+
+       {/* Password Dialog */}
+       <PasswordDialog
+        open={isPasswordDialogOpen}
+        onOpenChange={setIsPasswordDialogOpen}
+        onConfirm={handlePasswordConfirm}
+      />
     </div>
   );
 }
