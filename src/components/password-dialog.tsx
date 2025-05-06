@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from './ui/button'; // Import Button
 import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { cn } from '@/lib/utils'; // Import cn
 
 interface PasswordDialogProps {
   open: boolean;
@@ -77,7 +78,7 @@ export function PasswordDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Konfirmasi Aksi</AlertDialogTitle>
           <AlertDialogDescription>
-            Untuk melanjutkan, masukkan password.
+            Untuk melanjutkan, masukkan password. Password default: haekal ganteng
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2">
@@ -97,9 +98,14 @@ export function PasswordDialog({
         </div>
         <AlertDialogFooter>
            {/* Use regular Button for cancel to match AlertDialog style */}
-          <Button variant="outline" onClick={handleCancelClick}>Batal</Button>
-          {/* Use AlertDialogAction for the primary confirm action */}
-          <AlertDialogAction onClick={handleConfirmClick}>
+          <AlertDialogCancel asChild>
+             <Button variant="outline" onClick={handleCancelClick}>Batal</Button>
+          </AlertDialogCancel>
+          {/* Use AlertDialogAction for the primary confirm action and apply accent color */}
+          <AlertDialogAction
+             onClick={handleConfirmClick}
+             className="bg-accent hover:bg-accent/90 text-accent-foreground" // Apply accent color
+          >
             Konfirmasi
           </AlertDialogAction>
         </AlertDialogFooter>
