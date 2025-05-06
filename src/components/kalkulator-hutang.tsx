@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { CalendarIcon, PlusCircle, Trash2, Edit2 } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2, Edit2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 
@@ -54,22 +54,22 @@ import { Textarea } from '@/components/ui/textarea';
 import { PasswordDialog } from '@/components/password-dialog';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-
-// Define the status options
-const StatusHutang = {
-  BELUM_LUNAS: 'Belum Lunas',
-  LUNAS_SEBAGIAN: 'Lunas Sebagian',
-  LUNAS: 'Lunas',
-} as const;
-
-type StatusHutangKey = keyof typeof StatusHutang;
-type StatusHutangValue = (typeof StatusHutang)[StatusHutangKey];
+import {
+  useGetHutangList,
+  useAddHutang,
+  useUpdateHutang,
+  useDeleteHutang,
+  findExistingHutangByName,
+  type AddHutangInput,
+  type UpdateHutangInput,
+} from '@/hooks/useHutang';
+import type { Hutang, StatusHutangValue } from '@/types/hutang';
+import { StatusHutang } from '@/types/hutang';
 
 // Define the Zod schema for form validation
 const formSchema = z.object({
-  id: z.string().optional(), // Optional for adding, required for editing
   nama: z.string().min(1, { message: 'Nama wajib diisi' }),
-  tanggal: z.date({ required_error: 'Tanggal wajib diisi' }).optional().or(z.literal(undefined)), // Allow undefined initially
+  tanggal: z.date({ required_error: 'Tanggal wajib diisi' }),
   nominal: z.coerce
     .number()
     .positive({ message: 'Nominal harus lebih dari 0' }),
@@ -79,164 +79,133 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-interface Hutang extends Omit<FormValues, 'tanggal'> {
-  id: string; // Make ID required for Hutang interface
-  tanggal: Date; // Ensure tanggal is Date in Hutang interface
+interface PendingAction {
+  type: 'add' | 'edit' | 'delete';
+  data?: FormValues; // For add/edit
+  id?: string;       // For edit/delete
 }
 
-type PendingAction =
-  | { type: 'add'; data: FormValues }
-  | { type: 'edit'; data: FormValues; id: string }
-  | { type: 'delete'; id: string }
-  | null;
 
 export default function KalkulatorHutang() {
-  const [daftarHutang, setDaftarHutang] = useState<Hutang[]>([]);
+  const { data: daftarHutang = [], isLoading: isLoadingHutang, error: fetchError } = useGetHutangList();
+  const addHutangMutation = useAddHutang();
+  const updateHutangMutation = useUpdateHutang();
+  const deleteHutangMutation = useDeleteHutang();
+
   const [totalHutang, setTotalHutang] = useState<number>(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [initialDateSet, setInitialDateSet] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       nama: '',
-      tanggal: undefined, // Initialize tanggal to undefined
+      tanggal: new Date(), // Set to new Date() directly
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     },
   });
 
-  // Set tanggal to new Date() on client-side after mount
-  useEffect(() => {
-    if (form.getValues('tanggal') === undefined && !editingId) {
-      form.setValue('tanggal', new Date());
-    }
-  }, [form, editingId]);
-
-
-  // Load data from localStorage on mount
-  useEffect(() => {
-    const storedHutang = localStorage.getItem('daftarHutang');
-    if (storedHutang) {
-      try {
-        const parsedData = JSON.parse(storedHutang) as Hutang[];
-        // Ensure dates are parsed correctly
-        const validData = parsedData.map(h => ({
-          ...h,
-          tanggal: new Date(h.tanggal),
-        }))
-        setDaftarHutang(validData);
-      } catch (error) {
-        console.error("Failed to parse stored data:", error);
-        localStorage.removeItem('daftarHutang'); // Clear invalid data
+   useEffect(() => {
+    // Set initial date only once if not editing and not already set
+    if (!initialDateSet && !editingId) {
+      const currentDateValue = form.getValues('tanggal');
+      // Check if the date is a valid date object, otherwise set it.
+      if (!(currentDateValue instanceof Date) || isNaN(currentDateValue.getTime())) {
+        form.setValue('tanggal', new Date(), { shouldValidate: true, shouldDirty: true });
       }
+      setInitialDateSet(true);
     }
-  }, []);
+  }, [form, editingId, initialDateSet]);
 
-  // Calculate total debt whenever the list changes (using useCallback)
+
   const hitungTotalHutang = useCallback(() => {
+    if (!daftarHutang) return;
     const total = daftarHutang.reduce((sum, hutang) => {
       return hutang.status !== StatusHutang.LUNAS ? sum + hutang.nominal : sum;
     }, 0);
     setTotalHutang(total);
-  }, [daftarHutang]); // Dependency on daftarHutang
+  }, [daftarHutang]);
 
-
-  // Save data to localStorage and recalculate total whenever daftarHutang changes
   useEffect(() => {
-    localStorage.setItem('daftarHutang', JSON.stringify(daftarHutang));
     hitungTotalHutang();
-  }, [daftarHutang, hitungTotalHutang]); // Added hitungTotalHutang to dependency array
+  }, [daftarHutang, hitungTotalHutang]);
 
 
-  const executeAdd = (data: FormValues) => {
-     if (!data.tanggal) { // Ensure date is set
-       toast({ title: 'Error', description: 'Tanggal tidak valid.', variant: 'destructive'});
-       return;
-     }
-     // Check if debt with the same name already exists and is not 'Lunas'
-      const existingHutangIndex = daftarHutang.findIndex(
-        (h) => h.nama.toLowerCase() === data.nama.toLowerCase() && h.status !== StatusHutang.LUNAS
-      );
+  const executeAdd = async (data: FormValues) => {
+    const existingHutang = findExistingHutangByName(daftarHutang, data.nama);
 
-      if (existingHutangIndex !== -1) {
-        // Update existing debt amount, date, status, and description
-        setDaftarHutang((prev) =>
-          prev.map((hutang, index) =>
-            index === existingHutangIndex
-              ? {
-                  ...hutang,
-                  nominal: hutang.nominal + data.nominal,
-                  tanggal: data.tanggal!, // Non-null assertion as we checked
-                  status: data.status, // Update status to the new entry's status
-                  // Update description: use new one if provided, otherwise keep old
-                  deskripsi: data.deskripsi || hutang.deskripsi,
-                }
-              : hutang
-          )
-        );
+    try {
+      if (existingHutang) {
+        const updatePayload: UpdateHutangInput = {
+          id: existingHutang.id,
+          nominal: existingHutang.nominal + data.nominal,
+          tanggal: data.tanggal, // Update tanggal to new entry's date
+          status: data.status, // Update status to new entry's status
+          deskripsi: data.deskripsi || existingHutang.deskripsi, // Update deskripsi
+        };
+        await updateHutangMutation.mutateAsync(updatePayload);
         toast({
           title: 'Sukses',
           description: `Jumlah hutang untuk ${data.nama} berhasil diperbarui.`,
         });
       } else {
-        // Add new debt with a unique ID
-        const newHutang: Hutang = {
-          ...data,
-          tanggal: data.tanggal!, // Non-null assertion
-          id: new Date().getTime().toString(), // Simple unique ID generation
-        };
-        setDaftarHutang((prev) => [...prev, newHutang]);
+        await addHutangMutation.mutateAsync(data as AddHutangInput);
         toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
       }
       form.reset({
         nama: '',
-        tanggal: new Date(), // Reset to new Date after submission
+        tanggal: new Date(),
         nominal: 0,
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
-  };
-
-  const executeEdit = (data: FormValues, id: string) => {
-    if (!data.tanggal) { // Ensure date is set
-      toast({ title: 'Error', description: 'Tanggal tidak valid.', variant: 'destructive'});
-      return;
+      setInitialDateSet(false); // Reset for next new entry
+    } catch (error) {
+      toast({ title: 'Error', description: 'Gagal menambahkan/memperbarui hutang.', variant: 'destructive' });
+      console.error("Firebase add/update error:", error);
     }
-    setDaftarHutang((prev) =>
-      prev.map((hutang) =>
-        hutang.id === id ? { ...data, id, tanggal: data.tanggal! } : hutang
-      )
-    );
-    toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
-    setEditingId(null); // Exit editing mode
-    form.reset({
-      nama: '',
-      tanggal: new Date(), // Reset to new Date after submission
-      nominal: 0,
-      status: StatusHutang.BELUM_LUNAS,
-      deskripsi: '',
-    });
   };
 
-  const executeDelete = (id: string) => {
-    setDaftarHutang((prev) => prev.filter((hutang) => hutang.id !== id));
-     toast({
-      title: 'Terhapus',
-      description: 'Data hutang telah dihapus.',
-      variant: 'destructive',
-    });
+  const executeEdit = async (data: FormValues, id: string) => {
+    try {
+      const updatePayload: UpdateHutangInput = { id, ...data };
+      await updateHutangMutation.mutateAsync(updatePayload);
+      toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
+      setEditingId(null);
+      form.reset({
+        nama: '',
+        tanggal: new Date(),
+        nominal: 0,
+        status: StatusHutang.BELUM_LUNAS,
+        deskripsi: '',
+      });
+      setInitialDateSet(false); // Reset for next new entry
+    } catch (error) {
+      toast({ title: 'Error', description: 'Gagal memperbarui hutang.', variant: 'destructive' });
+      console.error("Firebase update error:", error);
+    }
   };
 
-  // Trigger password dialog before submitting
+  const executeDelete = async (id: string) => {
+    try {
+      await deleteHutangMutation.mutateAsync(id);
+      toast({
+        title: 'Terhapus',
+        description: 'Data hutang telah dihapus.',
+        variant: 'destructive',
+      });
+    } catch (error) {
+      toast({ title: 'Error', description: 'Gagal menghapus hutang.', variant: 'destructive' });
+      console.error("Firebase delete error:", error);
+    }
+  };
+
   const onSubmit: SubmitHandler<FormValues> = (data) => {
-    if (!data.tanggal) {
-       toast({ title: 'Error', description: 'Tanggal wajib diisi.', variant: 'destructive'});
-       return;
-    }
     if (editingId) {
       setPendingAction({ type: 'edit', data, id: editingId });
     } else {
@@ -245,54 +214,52 @@ export default function KalkulatorHutang() {
     setIsPasswordDialogOpen(true);
   };
 
-  // Trigger password dialog before deleting
   const handleDelete = (id: string) => {
     setPendingAction({ type: 'delete', id });
     setIsPasswordDialogOpen(true);
   };
 
-  // Handle editing (just populate form for now)
-   const handleEdit = (hutang: Hutang) => {
-     setEditingId(hutang.id);
-     form.reset({
-       ...hutang,
-       tanggal: new Date(hutang.tanggal), // Ensure it's a Date object
-       deskripsi: hutang.deskripsi || '',
-     });
-   };
-
+  const handleEdit = (hutang: Hutang) => {
+    setEditingId(hutang.id);
+    form.reset({
+      ...hutang,
+      tanggal: new Date(hutang.tanggal), // Ensure date is a Date object
+      deskripsi: hutang.deskripsi || '',
+    });
+    setInitialDateSet(true); // To prevent date reset by useEffect
+  };
 
   const handleCancelEdit = () => {
-     setEditingId(null);
-     form.reset({
-       nama: '',
-       tanggal: new Date(), // Reset to new Date
-       nominal: 0,
-       status: StatusHutang.BELUM_LUNAS,
-       deskripsi: '',
-     });
-   };
+    setEditingId(null);
+    form.reset({
+      nama: '',
+      tanggal: new Date(),
+      nominal: 0,
+      status: StatusHutang.BELUM_LUNAS,
+      deskripsi: '',
+    });
+    setInitialDateSet(false); // Reset for next new entry
+  };
 
-  // Execute the stored action after password confirmation
-  const handlePasswordConfirm = () => {
+  const handlePasswordConfirm = async () => {
     if (!pendingAction) return;
+
+    setIsPasswordDialogOpen(false); // Close dialog immediately
 
     switch (pendingAction.type) {
       case 'add':
-        executeAdd(pendingAction.data);
+        if (pendingAction.data) await executeAdd(pendingAction.data);
         break;
       case 'edit':
-        executeEdit(pendingAction.data, pendingAction.id);
+        if (pendingAction.data && pendingAction.id) await executeEdit(pendingAction.data, pendingAction.id);
         break;
       case 'delete':
-        executeDelete(pendingAction.id);
+        if (pendingAction.id) await executeDelete(pendingAction.id);
         break;
     }
-    setPendingAction(null); // Clear pending action
-    // PasswordDialog already handles closing itself and showing success toast
+    setPendingAction(null);
   };
 
-  // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -301,7 +268,6 @@ export default function KalkulatorHutang() {
     }).format(amount);
   };
 
-  // Get status color
  const getStatusClass = (status: StatusHutangValue) => {
     switch (status) {
       case StatusHutang.LUNAS:
@@ -315,6 +281,11 @@ export default function KalkulatorHutang() {
     }
   };
 
+  const isMutating = addHutangMutation.isPending || updateHutangMutation.isPending || deleteHutangMutation.isPending;
+
+  if (fetchError) {
+    return <div className="container mx-auto p-4 text-center text-destructive">Error memuat data: {(fetchError as Error).message}</div>;
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -324,13 +295,12 @@ export default function KalkulatorHutang() {
             📝 Kasbon temen Guweh
           </CardTitle>
           <CardDescription className="text-center pt-2 text-muted-foreground">
-            Masukkan detail hutang Anda di bawah ini.
+            Masukkan detail hutang Anda di bawah ini. Data akan disimpan online.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Align items to the end of the grid cell for vertical alignment */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-end">
                 <FormField
                   control={form.control}
@@ -361,7 +331,7 @@ export default function KalkulatorHutang() {
                                 !field.value && 'text-muted-foreground'
                               )}
                             >
-                              {field.value ? (
+                              {field.value instanceof Date && !isNaN(field.value.getTime()) ? (
                                 format(field.value, 'PPP', { locale: id })
                               ) : (
                                 <span>Pilih tanggal</span>
@@ -373,7 +343,7 @@ export default function KalkulatorHutang() {
                         <PopoverContent className="w-auto p-0 rounded-lg shadow-lg" align="start">
                           <Calendar
                             mode="single"
-                            selected={field.value}
+                            selected={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value : undefined}
                             onSelect={field.onChange}
                             disabled={(date) =>
                               date > new Date() || date < new Date('1900-01-01')
@@ -416,7 +386,7 @@ export default function KalkulatorHutang() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Status</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="rounded-lg shadow-sm">
                             <SelectValue placeholder="Pilih status hutang" />
@@ -454,12 +424,12 @@ export default function KalkulatorHutang() {
               </div>
               <div className="flex justify-end space-x-2 pt-4">
                  {editingId && (
-                   <Button type="button" variant="outline" onClick={handleCancelEdit} className="rounded-lg shadow-sm">
+                   <Button type="button" variant="outline" onClick={handleCancelEdit} className="rounded-lg shadow-sm" disabled={isMutating}>
                      Batal Edit
                    </Button>
                  )}
-                <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg shadow-md">
-                   {editingId ? <Edit2 className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg shadow-md" disabled={isMutating}>
+                   {isMutating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingId ? <Edit2 className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
                   {editingId ? 'Simpan Perubahan' : 'Tambah Hutang'}
                 </Button>
               </div>
@@ -486,7 +456,14 @@ export default function KalkulatorHutang() {
                  </TableRow>
                </TableHeader>
                <TableBody>
-                 {daftarHutang.length === 0 ? (
+                 {isLoadingHutang ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                        Memuat data...
+                      </TableCell>
+                    </TableRow>
+                 ) : daftarHutang.length === 0 ? (
                    <TableRow>
                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                        Belum ada data hutang.
@@ -508,11 +485,11 @@ export default function KalkulatorHutang() {
                            </span>
                        </TableCell>
                        <TableCell className="text-right space-x-1">
-                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-primary hover:text-primary/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all">
+                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-primary hover:text-primary/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
                            <Edit2 className="h-4 w-4" />
                            <span className="sr-only">Edit</span>
                          </Button>
-                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-destructive hover:text-destructive/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all">
+                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-destructive hover:text-destructive/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
                            <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Hapus</span>
                          </Button>
@@ -531,11 +508,14 @@ export default function KalkulatorHutang() {
         </CardFooter>
       </Card>
 
-       {/* Password Dialog */}
        <PasswordDialog
         open={isPasswordDialogOpen}
-        onOpenChange={setIsPasswordDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) setPendingAction(null); // Clear pending action if dialog is closed manually
+          setIsPasswordDialogOpen(open);
+        }}
         onConfirm={handlePasswordConfirm}
+        isConfirming={isMutating}
       />
     </div>
   );

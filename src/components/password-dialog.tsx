@@ -1,3 +1,4 @@
+
 // src/components/password-dialog.tsx
 import type React from 'react';
 import { useState } from 'react';
@@ -13,64 +14,77 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Button } from './ui/button'; // Import Button
-import { useToast } from '@/hooks/use-toast'; // Import useToast
-import { cn } from '@/lib/utils'; // Import cn
+import { Button } from './ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { Loader2 } from 'lucide-react'; // Import Loader2
 
 interface PasswordDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
-  correctPassword?: string; // Make password prop optional, default to env var
+  correctPassword?: string;
+  isConfirming?: boolean; // New prop for loading state
 }
 
-const DEFAULT_PASSWORD = process.env.NEXT_PUBLIC_ACTION_PASSWORD || 'haekal ganteng'; // Fallback
+const DEFAULT_PASSWORD = process.env.NEXT_PUBLIC_ACTION_PASSWORD || 'haekal ganteng';
 
 export function PasswordDialog({
   open,
   onOpenChange,
   onConfirm,
   correctPassword = DEFAULT_PASSWORD,
+  isConfirming = false, // Default to false
 }: PasswordDialogProps) {
   const [enteredPassword, setEnteredPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const { toast } = useToast(); // Use toast hook
+  const { toast } = useToast();
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEnteredPassword(e.target.value);
-    setPasswordError(''); // Clear error when user types
+    setPasswordError('');
   };
 
   const handleConfirmClick = () => {
+    if (isConfirming) return; // Prevent multiple clicks while confirming
+
     if (enteredPassword === correctPassword) {
-      onConfirm(); // Execute the action
-      setEnteredPassword(''); // Clear password field
-      setPasswordError(''); // Clear error
-      onOpenChange(false); // Close dialog
-       toast({ title: 'Sukses', description: 'Aksi berhasil dikonfirmasi.' });
+      onConfirm();
+      // Success toast is now handled by the calling component after the async action completes
+      // setPasswordError('');
+      // onOpenChange(false); // Dialog is closed by onConfirm or by the calling component
+      // No need to clear password here, as the dialog will close or action completes
     } else {
       setPasswordError('Password salah. Silakan coba lagi.');
-       toast({
-         title: 'Gagal',
-         description: 'Password salah.',
-         variant: 'destructive',
-       });
+      toast({
+        title: 'Gagal',
+        description: 'Password salah.',
+        variant: 'destructive',
+      });
     }
   };
 
   const handleCancelClick = () => {
-    setEnteredPassword(''); // Clear password field
-    setPasswordError(''); // Clear error
-    onOpenChange(false); // Close dialog
+    if (isConfirming) return;
+    setEnteredPassword('');
+    setPasswordError('');
+    onOpenChange(false);
   };
 
-  // Handle Enter key press in the input field
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      e.preventDefault(); // Prevent default form submission behavior
+      e.preventDefault();
       handleConfirmClick();
     }
   };
+
+  // Clear password when dialog opens or closes
+  React.useEffect(() => {
+    if (!open) {
+      setEnteredPassword('');
+      setPasswordError('');
+    }
+  }, [open]);
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -88,25 +102,30 @@ export function PasswordDialog({
             type="password"
             value={enteredPassword}
             onChange={handlePasswordChange}
-            onKeyDown={handleKeyDown} // Add key down handler
+            onKeyDown={handleKeyDown}
             placeholder="Masukkan password..."
             className={passwordError ? 'border-destructive' : ''}
+            disabled={isConfirming}
           />
           {passwordError && (
             <p className="text-sm text-destructive">{passwordError}</p>
           )}
         </div>
         <AlertDialogFooter>
-           {/* Use regular Button for cancel to match AlertDialog style */}
           <AlertDialogCancel asChild>
-             <Button variant="outline" onClick={handleCancelClick}>Batal</Button>
+            <Button variant="outline" onClick={handleCancelClick} disabled={isConfirming}>
+              Batal
+            </Button>
           </AlertDialogCancel>
-          {/* Use AlertDialogAction for the primary confirm action and apply accent color */}
           <AlertDialogAction
-             onClick={handleConfirmClick}
-             className="bg-accent hover:bg-accent/90 text-accent-foreground" // Apply accent color
+            onClick={handleConfirmClick}
+            className="bg-accent hover:bg-accent/90 text-accent-foreground"
+            disabled={isConfirming}
           >
-            Konfirmasi
+            {isConfirming ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            {isConfirming ? 'Mengkonfirmasi...' : 'Konfirmasi'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
