@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { CalendarIcon, PlusCircle, Trash2, Edit2, DollarSign } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2, Edit2 } from 'lucide-react'; // Removed DollarSign
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale'; // Import Indonesian locale
 
@@ -199,11 +199,11 @@ export default function KalkulatorHutang() {
  const getStatusClass = (status: StatusHutangValue) => {
     switch (status) {
       case StatusHutang.LUNAS:
-        return 'text-green-600 bg-green-100'; // Using direct Tailwind class for green
+        return 'text-green-600 bg-green-100 dark:text-green-300 dark:bg-green-900'; // Adjusted dark mode colors
       case StatusHutang.LUNAS_SEBAGIAN:
-        return 'text-yellow-600 bg-yellow-100'; // Direct Tailwind for yellow
+        return 'text-yellow-600 bg-yellow-100 dark:text-yellow-300 dark:bg-yellow-900'; // Adjusted dark mode colors
       case StatusHutang.BELUM_LUNAS:
-        return 'text-red-600 bg-red-100'; // Direct Tailwind for red
+        return 'text-red-600 bg-red-100 dark:text-red-300 dark:bg-red-900'; // Adjusted dark mode colors
       default:
         return 'text-foreground bg-background';
     }
@@ -285,11 +285,26 @@ export default function KalkulatorHutang() {
                   name="nominal"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nominal (Rp)</FormLabel>
+                      <FormLabel>Nominal</FormLabel> {/* Removed (Rp) from label */}
                       <FormControl>
                         <div className="relative">
-                           <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                           <Input type="number" placeholder="Contoh: 500000" {...field} className="pl-8"/>
+                           {/* Replaced DollarSign icon with "Rp" text */}
+                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                             Rp
+                           </span>
+                           <Input
+                              type="number"
+                              placeholder="Contoh: 500000"
+                              {...field}
+                              className="pl-8" // Added padding to prevent text overlap
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                // Allow empty string or convert to number
+                                field.onChange(value === '' ? '' : Number(value));
+                              }}
+                              // Ensure value is displayed correctly (handle potential NaN or 0 for empty input)
+                              value={field.value === 0 && form.formState.dirtyFields.nominal ? '0' : (field.value || '')}
+                           />
                         </div>
                       </FormControl>
                       <FormMessage />
