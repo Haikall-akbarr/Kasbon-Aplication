@@ -6,9 +6,9 @@ import { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { CalendarIcon, PlusCircle, Trash2, Edit2 } from 'lucide-react'; // Removed DollarSign
+import { CalendarIcon, PlusCircle, Trash2, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { id } from 'date-fns/locale'; // Import Indonesian locale
+import { id } from 'date-fns/locale';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -143,13 +143,38 @@ export default function KalkulatorHutang() {
       toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
       setEditingId(null); // Exit editing mode
     } else {
-      // Add new debt with a unique ID
-      const newHutang: Hutang = {
-        ...data,
-        id: new Date().getTime().toString(), // Simple unique ID generation
-      };
-      setDaftarHutang((prev) => [...prev, newHutang]);
-      toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
+      // Check if debt with the same name already exists and is not 'Lunas'
+      const existingHutangIndex = daftarHutang.findIndex(
+        (h) => h.nama.toLowerCase() === data.nama.toLowerCase() && h.status !== StatusHutang.LUNAS
+      );
+
+      if (existingHutangIndex !== -1) {
+        // Update existing debt amount, date, and status
+        setDaftarHutang((prev) =>
+          prev.map((hutang, index) =>
+            index === existingHutangIndex
+              ? {
+                  ...hutang,
+                  nominal: hutang.nominal + data.nominal,
+                  tanggal: data.tanggal, // Update tanggal to the new entry's date
+                  status: data.status, // Update status to the new entry's status
+                }
+              : hutang
+          )
+        );
+        toast({
+          title: 'Sukses',
+          description: `Jumlah hutang untuk ${data.nama} berhasil diperbarui.`,
+        });
+      } else {
+        // Add new debt with a unique ID
+        const newHutang: Hutang = {
+          ...data,
+          id: new Date().getTime().toString(), // Simple unique ID generation
+        };
+        setDaftarHutang((prev) => [...prev, newHutang]);
+        toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
+      }
     }
     form.reset({ // Reset form with default values
       nama: '',
@@ -199,11 +224,11 @@ export default function KalkulatorHutang() {
  const getStatusClass = (status: StatusHutangValue) => {
     switch (status) {
       case StatusHutang.LUNAS:
-        return 'text-green-600 bg-green-100 dark:text-green-300 dark:bg-green-900'; // Adjusted dark mode colors
+        return 'text-green-600 bg-green-100 dark:text-green-300 dark:bg-green-900';
       case StatusHutang.LUNAS_SEBAGIAN:
-        return 'text-yellow-600 bg-yellow-100 dark:text-yellow-300 dark:bg-yellow-900'; // Adjusted dark mode colors
+        return 'text-yellow-600 bg-yellow-100 dark:text-yellow-300 dark:bg-yellow-900';
       case StatusHutang.BELUM_LUNAS:
-        return 'text-red-600 bg-red-100 dark:text-red-300 dark:bg-red-900'; // Adjusted dark mode colors
+        return 'text-red-600 bg-red-100 dark:text-red-300 dark:bg-red-900';
       default:
         return 'text-foreground bg-background';
     }
@@ -212,9 +237,9 @@ export default function KalkulatorHutang() {
 
   return (
     <div className="container mx-auto p-4 md:p-8">
-      <Card className="mb-8 shadow-lg">
+      <Card className="mb-8 shadow-lg rounded-xl">
         <CardHeader>
-          <CardTitle className="text-2xl md:text-3xl font-bold text-center text-primary-foreground bg-primary p-4 rounded-t-lg">
+          <CardTitle className="text-2xl md:text-3xl font-bold text-center text-primary-foreground bg-primary p-4 rounded-t-xl">
             📝 Kalkulator Hutang
           </CardTitle>
           <CardDescription className="text-center pt-2 text-muted-foreground">
@@ -232,7 +257,7 @@ export default function KalkulatorHutang() {
                     <FormItem>
                       <FormLabel>Nama (Pemberi/Peminjam)</FormLabel>
                       <FormControl>
-                        <Input placeholder="Contoh: Budi Santoso" {...field} />
+                        <Input placeholder="Contoh: Budi Santoso" {...field} className="rounded-lg shadow-sm" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -250,12 +275,12 @@ export default function KalkulatorHutang() {
                              <Button
                                variant={'outline'}
                                className={cn(
-                                 'w-full pl-3 text-left font-normal',
+                                 'w-full pl-3 text-left font-normal rounded-lg shadow-sm',
                                  !field.value && 'text-muted-foreground'
                                )}
                              >
                                {field.value ? (
-                                 format(field.value, 'PPP', { locale: id }) // Use Indonesian locale
+                                 format(field.value, 'PPP', { locale: id })
                                ) : (
                                  <span>Pilih tanggal</span>
                                )}
@@ -263,7 +288,7 @@ export default function KalkulatorHutang() {
                              </Button>
                            </FormControl>
                          </PopoverTrigger>
-                         <PopoverContent className="w-auto p-0" align="start">
+                         <PopoverContent className="w-auto p-0 rounded-lg shadow-lg" align="start">
                            <Calendar
                              mode="single"
                              selected={field.value}
@@ -272,7 +297,7 @@ export default function KalkulatorHutang() {
                                date > new Date() || date < new Date('1900-01-01')
                              }
                              initialFocus
-                             locale={id} // Use Indonesian locale
+                             locale={id}
                            />
                          </PopoverContent>
                        </Popover>
@@ -285,10 +310,9 @@ export default function KalkulatorHutang() {
                   name="nominal"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nominal</FormLabel> {/* Removed (Rp) from label */}
+                      <FormLabel>Nominal</FormLabel>
                       <FormControl>
                         <div className="relative">
-                           {/* Replaced DollarSign icon with "Rp" text */}
                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                              Rp
                            </span>
@@ -296,13 +320,11 @@ export default function KalkulatorHutang() {
                               type="number"
                               placeholder="Contoh: 500000"
                               {...field}
-                              className="pl-8" // Added padding to prevent text overlap
+                              className="pl-8 rounded-lg shadow-sm"
                               onChange={(e) => {
                                 const value = e.target.value;
-                                // Allow empty string or convert to number
                                 field.onChange(value === '' ? '' : Number(value));
                               }}
-                              // Ensure value is displayed correctly (handle potential NaN or 0 for empty input)
                               value={field.value === 0 && form.formState.dirtyFields.nominal ? '0' : (field.value || '')}
                            />
                         </div>
@@ -319,11 +341,11 @@ export default function KalkulatorHutang() {
                       <FormLabel>Status</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger className="rounded-lg shadow-sm">
                             <SelectValue placeholder="Pilih status hutang" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent className="rounded-lg shadow-lg">
                           {Object.entries(StatusHutang).map(([key, value]) => (
                              <SelectItem key={key} value={value}>
                                {value}
@@ -338,11 +360,11 @@ export default function KalkulatorHutang() {
               </div>
               <div className="flex justify-end space-x-2 pt-4">
                  {editingId && (
-                   <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                   <Button type="button" variant="outline" onClick={handleCancelEdit} className="rounded-lg shadow-sm">
                      Batal
                    </Button>
                  )}
-                <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg shadow-md">
                    {editingId ? <Edit2 className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                   {editingId ? 'Simpan Perubahan' : 'Tambah Hutang'}
                 </Button>
@@ -352,20 +374,20 @@ export default function KalkulatorHutang() {
         </CardContent>
       </Card>
 
-       <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-xl md:text-2xl font-semibold">Daftar Hutang</CardTitle>
+       <Card className="shadow-lg rounded-xl">
+        <CardHeader className="border-b border-border">
+          <CardTitle className="text-xl md:text-2xl font-semibold text-primary-foreground">Daftar Hutang</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
            <div className="overflow-x-auto">
              <Table>
                <TableHeader>
                  <TableRow>
-                   <TableHead>Nama</TableHead>
-                   <TableHead>Tanggal</TableHead>
-                   <TableHead className="text-right">Nominal</TableHead>
-                   <TableHead className="text-center">Status</TableHead>
-                   <TableHead className="text-right">Aksi</TableHead>
+                   <TableHead className="whitespace-nowrap">Nama</TableHead>
+                   <TableHead className="whitespace-nowrap">Tanggal</TableHead>
+                   <TableHead className="text-right whitespace-nowrap">Nominal</TableHead>
+                   <TableHead className="text-center whitespace-nowrap">Status</TableHead>
+                   <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>
                  </TableRow>
                </TableHeader>
                <TableBody>
@@ -377,24 +399,24 @@ export default function KalkulatorHutang() {
                    </TableRow>
                  ) : (
                    daftarHutang.map((hutang) => (
-                     <TableRow key={hutang.id}>
+                     <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150">
                        <TableCell className="font-medium">{hutang.nama}</TableCell>
                        <TableCell>{format(new Date(hutang.tanggal), 'dd MMMM yyyy', { locale: id })}</TableCell>
                        <TableCell className="text-right">{formatCurrency(hutang.nominal)}</TableCell>
                         <TableCell className="text-center">
                            <span className={cn(
-                              "px-2 py-1 rounded-full text-xs font-medium",
+                              "px-3 py-1 rounded-full text-xs font-semibold shadow-sm",
                               getStatusClass(hutang.status)
                             )}>
                               {hutang.status}
                            </span>
                        </TableCell>
                        <TableCell className="text-right space-x-1">
-                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-blue-500 hover:text-blue-700 h-8 w-8">
+                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-primary hover:text-primary/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all">
                            <Edit2 className="h-4 w-4" />
                            <span className="sr-only">Edit</span>
                          </Button>
-                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-red-500 hover:text-red-700 h-8 w-8">
+                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-destructive hover:text-destructive/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all">
                            <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Hapus</span>
                          </Button>
@@ -406,7 +428,7 @@ export default function KalkulatorHutang() {
              </Table>
            </div>
         </CardContent>
-         <CardFooter className="flex justify-end bg-secondary p-4 rounded-b-lg">
+         <CardFooter className="flex justify-end bg-secondary p-4 rounded-b-xl border-t border-border">
           <div className="text-lg md:text-xl font-bold text-secondary-foreground">
             Total Hutang (Belum Lunas/Sebagian): {formatCurrency(totalHutang)}
           </div>
