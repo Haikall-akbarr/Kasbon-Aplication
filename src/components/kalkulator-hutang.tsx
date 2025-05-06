@@ -50,6 +50,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Textarea } from '@/components/ui/textarea'; // Import Textarea
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -72,6 +73,7 @@ const formSchema = z.object({
     .number()
     .positive({ message: 'Nominal harus lebih dari 0' }),
   status: z.nativeEnum(StatusHutang),
+  deskripsi: z.string().optional(), // Add optional description field
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -93,6 +95,7 @@ export default function KalkulatorHutang() {
       tanggal: new Date(),
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
+      deskripsi: '', // Default description
     },
   });
 
@@ -149,7 +152,7 @@ export default function KalkulatorHutang() {
       );
 
       if (existingHutangIndex !== -1) {
-        // Update existing debt amount, date, and status
+        // Update existing debt amount, date, status, and description
         setDaftarHutang((prev) =>
           prev.map((hutang, index) =>
             index === existingHutangIndex
@@ -158,6 +161,8 @@ export default function KalkulatorHutang() {
                   nominal: hutang.nominal + data.nominal,
                   tanggal: data.tanggal, // Update tanggal to the new entry's date
                   status: data.status, // Update status to the new entry's status
+                  // Update description: use new one if provided, otherwise keep old
+                  deskripsi: data.deskripsi || hutang.deskripsi,
                 }
               : hutang
           )
@@ -181,6 +186,7 @@ export default function KalkulatorHutang() {
       tanggal: new Date(),
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
+      deskripsi: '', // Reset description
     });
   };
 
@@ -198,6 +204,7 @@ export default function KalkulatorHutang() {
     form.reset({ // Populate form with existing data
       ...hutang,
       tanggal: new Date(hutang.tanggal), // Ensure date is a Date object
+      deskripsi: hutang.deskripsi || '', // Populate description
     });
   };
 
@@ -208,6 +215,7 @@ export default function KalkulatorHutang() {
        tanggal: new Date(),
        nominal: 0,
        status: StatusHutang.BELUM_LUNAS,
+       deskripsi: '', // Reset description
      });
    };
 
@@ -255,7 +263,7 @@ export default function KalkulatorHutang() {
                   name="nama"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nama (Pemberi/Peminjam)</FormLabel>
+                      <FormLabel>Nama</FormLabel>
                       <FormControl>
                         <Input placeholder="Contoh: Budi Santoso" {...field} className="rounded-lg shadow-sm" />
                       </FormControl>
@@ -357,6 +365,24 @@ export default function KalkulatorHutang() {
                     </FormItem>
                   )}
                 />
+                {/* Add Description Field */}
+                 <FormField
+                  control={form.control}
+                  name="deskripsi"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2"> {/* Span across two columns on medium screens */}
+                      <FormLabel>Deskripsi (Opsional)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Contoh: Pinjam buat makan siang, Beli jajan sore"
+                          className="rounded-lg shadow-sm resize-none" // Added resize-none
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
               <div className="flex justify-end space-x-2 pt-4">
                  {editingId && (
@@ -385,6 +411,7 @@ export default function KalkulatorHutang() {
                  <TableRow>
                    <TableHead className="whitespace-nowrap">Nama</TableHead>
                    <TableHead className="whitespace-nowrap">Tanggal</TableHead>
+                   <TableHead className="whitespace-nowrap">Deskripsi</TableHead> {/* Add Description Header */}
                    <TableHead className="text-right whitespace-nowrap">Nominal</TableHead>
                    <TableHead className="text-center whitespace-nowrap">Status</TableHead>
                    <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>
@@ -393,7 +420,7 @@ export default function KalkulatorHutang() {
                <TableBody>
                  {daftarHutang.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8"> {/* Updated colSpan to 6 */}
                        Belum ada data hutang.
                      </TableCell>
                    </TableRow>
@@ -402,6 +429,7 @@ export default function KalkulatorHutang() {
                      <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150">
                        <TableCell className="font-medium">{hutang.nama}</TableCell>
                        <TableCell>{format(new Date(hutang.tanggal), 'dd MMMM yyyy', { locale: id })}</TableCell>
+                       <TableCell className="max-w-xs truncate text-muted-foreground">{hutang.deskripsi || '-'}</TableCell> {/* Add Description Cell */}
                        <TableCell className="text-right">{formatCurrency(hutang.nominal)}</TableCell>
                         <TableCell className="text-center">
                            <span className={cn(
