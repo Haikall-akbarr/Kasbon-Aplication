@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'kasbon', // Update title
+  title: 'Kasbon temen Guweh', // Update title
   description: 'Aplikasi untuk menghitung dan mengelola hutang.', // Update description
 };
 

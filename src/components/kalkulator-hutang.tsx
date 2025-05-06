@@ -240,7 +240,7 @@ export default function KalkulatorHutang() {
       <Card className="mb-8 shadow-lg rounded-xl">
         <CardHeader>
           <CardTitle className="text-2xl md:text-3xl font-bold text-center text-primary-foreground bg-primary p-4 rounded-t-xl">
-            📝 Kalkulator Hutang
+            📝 Kasbon temen Guweh
           </CardTitle>
           <CardDescription className="text-center pt-2 text-muted-foreground">
             Masukkan detail hutang Anda di bawah ini.
