@@ -2,7 +2,7 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import { useState, useEffect, useCallback } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -51,7 +51,7 @@ import {
 } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Textarea } from '@/components/ui/textarea';
-import { PasswordDialog } from '@/components/password-dialog'; // Import PasswordDialog
+import { PasswordDialog } from '@/components/password-dialog';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -69,7 +69,7 @@ type StatusHutangValue = (typeof StatusHutang)[StatusHutangKey];
 const formSchema = z.object({
   id: z.string().optional(), // Optional for adding, required for editing
   nama: z.string().min(1, { message: 'Nama wajib diisi' }),
-  tanggal: z.date({ required_error: 'Tanggal wajib diisi' }),
+  tanggal: z.date({ required_error: 'Tanggal wajib diisi' }).optional().or(z.literal(undefined)), // Allow undefined initially
   nominal: z.coerce
     .number()
     .positive({ message: 'Nominal harus lebih dari 0' }),
@@ -79,8 +79,9 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-interface Hutang extends FormValues {
+interface Hutang extends Omit<FormValues, 'tanggal'> {
   id: string; // Make ID required for Hutang interface
+  tanggal: Date; // Ensure tanggal is Date in Hutang interface
 }
 
 type PendingAction =
@@ -94,19 +95,27 @@ export default function KalkulatorHutang() {
   const [totalHutang, setTotalHutang] = useState<number>(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null); // State for pending action
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       nama: '',
-      tanggal: new Date(),
+      tanggal: undefined, // Initialize tanggal to undefined
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     },
   });
+
+  // Set tanggal to new Date() on client-side after mount
+  useEffect(() => {
+    if (form.getValues('tanggal') === undefined && !editingId) {
+      form.setValue('tanggal', new Date());
+    }
+  }, [form, editingId]);
+
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -144,6 +153,10 @@ export default function KalkulatorHutang() {
 
 
   const executeAdd = (data: FormValues) => {
+     if (!data.tanggal) { // Ensure date is set
+       toast({ title: 'Error', description: 'Tanggal tidak valid.', variant: 'destructive'});
+       return;
+     }
      // Check if debt with the same name already exists and is not 'Lunas'
       const existingHutangIndex = daftarHutang.findIndex(
         (h) => h.nama.toLowerCase() === data.nama.toLowerCase() && h.status !== StatusHutang.LUNAS
@@ -157,7 +170,7 @@ export default function KalkulatorHutang() {
               ? {
                   ...hutang,
                   nominal: hutang.nominal + data.nominal,
-                  tanggal: data.tanggal, // Update tanggal to the new entry's date
+                  tanggal: data.tanggal!, // Non-null assertion as we checked
                   status: data.status, // Update status to the new entry's status
                   // Update description: use new one if provided, otherwise keep old
                   deskripsi: data.deskripsi || hutang.deskripsi,
@@ -173,6 +186,7 @@ export default function KalkulatorHutang() {
         // Add new debt with a unique ID
         const newHutang: Hutang = {
           ...data,
+          tanggal: data.tanggal!, // Non-null assertion
           id: new Date().getTime().toString(), // Simple unique ID generation
         };
         setDaftarHutang((prev) => [...prev, newHutang]);
@@ -180,7 +194,7 @@ export default function KalkulatorHutang() {
       }
       form.reset({
         nama: '',
-        tanggal: new Date(),
+        tanggal: new Date(), // Reset to new Date after submission
         nominal: 0,
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
@@ -188,16 +202,20 @@ export default function KalkulatorHutang() {
   };
 
   const executeEdit = (data: FormValues, id: string) => {
+    if (!data.tanggal) { // Ensure date is set
+      toast({ title: 'Error', description: 'Tanggal tidak valid.', variant: 'destructive'});
+      return;
+    }
     setDaftarHutang((prev) =>
       prev.map((hutang) =>
-        hutang.id === id ? { ...data, id } : hutang
+        hutang.id === id ? { ...data, id, tanggal: data.tanggal! } : hutang
       )
     );
     toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
     setEditingId(null); // Exit editing mode
     form.reset({
       nama: '',
-      tanggal: new Date(),
+      tanggal: new Date(), // Reset to new Date after submission
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
@@ -215,6 +233,10 @@ export default function KalkulatorHutang() {
 
   // Trigger password dialog before submitting
   const onSubmit: SubmitHandler<FormValues> = (data) => {
+    if (!data.tanggal) {
+       toast({ title: 'Error', description: 'Tanggal wajib diisi.', variant: 'destructive'});
+       return;
+    }
     if (editingId) {
       setPendingAction({ type: 'edit', data, id: editingId });
     } else {
@@ -234,7 +256,7 @@ export default function KalkulatorHutang() {
      setEditingId(hutang.id);
      form.reset({
        ...hutang,
-       tanggal: new Date(hutang.tanggal),
+       tanggal: new Date(hutang.tanggal), // Ensure it's a Date object
        deskripsi: hutang.deskripsi || '',
      });
    };
@@ -244,7 +266,7 @@ export default function KalkulatorHutang() {
      setEditingId(null);
      form.reset({
        nama: '',
-       tanggal: new Date(),
+       tanggal: new Date(), // Reset to new Date
        nominal: 0,
        status: StatusHutang.BELUM_LUNAS,
        deskripsi: '',
