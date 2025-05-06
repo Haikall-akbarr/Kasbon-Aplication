@@ -55,7 +55,7 @@ import { PasswordDialog } from '@/components/password-dialog';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import {
-  useHutang, // Changed from useGetHutangList
+  useHutang,
   useAddHutang,
   useUpdateHutang,
   useDeleteHutang,
@@ -87,7 +87,7 @@ interface PendingAction {
 
 
 export default function KalkulatorHutang() {
-  const { data: daftarHutang = [], isLoading: isLoadingHutang, error: fetchError } = useHutang(); // Changed from useGetHutangList
+  const { data: daftarHutang = [], isLoading: isLoadingHutang, error: fetchError } = useHutang();
   const addHutangMutation = useAddHutang();
   const updateHutangMutation = useUpdateHutang();
   const deleteHutangMutation = useDeleteHutang();
@@ -103,7 +103,7 @@ export default function KalkulatorHutang() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       nama: '',
-      tanggal: new Date(), 
+      tanggal: undefined, // Initialize as undefined to avoid hydration mismatch
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
