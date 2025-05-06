@@ -1,3 +1,4 @@
+
 // src/components/kalkulator-hutang.tsx
 'use client';
 
@@ -103,7 +104,7 @@ export default function KalkulatorHutang() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       nama: '',
-      tanggal: undefined, // Initialize as undefined to avoid hydration mismatch
+      tanggal: undefined, 
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
@@ -111,12 +112,9 @@ export default function KalkulatorHutang() {
   });
 
    useEffect(() => {
-    if (!initialDateSet && !editingId) {
-      const currentDateValue = form.getValues('tanggal');
-      if (!(currentDateValue instanceof Date) || isNaN(currentDateValue.getTime())) {
+    if (!initialDateSet && !editingId && form.getValues('tanggal') === undefined) {
         form.setValue('tanggal', new Date(), { shouldValidate: true, shouldDirty: true });
-      }
-      setInitialDateSet(true);
+        setInitialDateSet(true);
     }
   }, [form, editingId, initialDateSet]);
 
@@ -138,13 +136,15 @@ export default function KalkulatorHutang() {
     const existingHutang = findExistingHutangByName(daftarHutang, data.nama);
 
     try {
-      if (existingHutang) {
+      if (existingHutang && existingHutang.id) {
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
           nominal: existingHutang.nominal + data.nominal,
+          // Keep existing tanggal, status, deskripsi if not explicitly changed for merged entry, or use new ones
+          // For simplicity, let's assume new data overwrites for these fields or combines description
           tanggal: data.tanggal, 
-          status: data.status, 
-          deskripsi: data.deskripsi || existingHutang.deskripsi, 
+          status: data.status, // Or decide on a merging strategy for status
+          deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
         };
         await updateHutangMutation.mutateAsync(updatePayload);
         toast({
@@ -165,7 +165,7 @@ export default function KalkulatorHutang() {
       setInitialDateSet(false); 
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menambahkan/memperbarui hutang.', variant: 'destructive' });
-      console.error("Firebase add/update error:", error);
+      console.error("RTDB add/update error:", error);
     }
   };
 
@@ -185,7 +185,7 @@ export default function KalkulatorHutang() {
       setInitialDateSet(false); 
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal memperbarui hutang.', variant: 'destructive' });
-      console.error("Firebase update error:", error);
+      console.error("RTDB update error:", error);
     }
   };
 
@@ -199,7 +199,7 @@ export default function KalkulatorHutang() {
       });
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menghapus hutang.', variant: 'destructive' });
-      console.error("Firebase delete error:", error);
+      console.error("RTDB delete error:", error);
     }
   };
 
@@ -221,7 +221,7 @@ export default function KalkulatorHutang() {
     setEditingId(hutang.id);
     form.reset({
       ...hutang,
-      tanggal: new Date(hutang.tanggal), 
+      tanggal: new Date(hutang.tanggal), // Ensure tanggal is a Date object for the form
       deskripsi: hutang.deskripsi || '',
     });
     setInitialDateSet(true); 
@@ -471,7 +471,7 @@ export default function KalkulatorHutang() {
                    daftarHutang.map((hutang) => (
                      <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150">
                        <TableCell className="font-medium">{hutang.nama}</TableCell>
-                       <TableCell>{format(new Date(hutang.tanggal), 'dd MMMM yyyy', { locale: id })}</TableCell>
+                       <TableCell>{hutang.tanggal instanceof Date && !isNaN(hutang.tanggal.getTime()) ? format(hutang.tanggal, 'dd MMMM yyyy', { locale: id }) : 'Invalid Date'}</TableCell>
                        <TableCell className="max-w-xs truncate text-muted-foreground">{hutang.deskripsi || '-'}</TableCell>
                        <TableCell className="text-right">{formatCurrency(hutang.nominal)}</TableCell>
                         <TableCell className="text-center">

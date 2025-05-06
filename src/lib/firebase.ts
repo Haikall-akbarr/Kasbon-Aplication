@@ -1,6 +1,17 @@
 
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getFirestore, collection, Timestamp } from 'firebase/firestore';
+import { 
+  getDatabase, 
+  ref, 
+  onValue, 
+  push, 
+  update, 
+  remove, 
+  serverTimestamp, 
+  child,
+  orderByChild,
+  query as rtdbQuery
+} from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -10,6 +21,7 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL, // Add this for Realtime Database
 };
 
 let app: FirebaseApp;
@@ -20,6 +32,21 @@ if (!getApps().length) {
   app = getApps()[0];
 }
 
-const db = getFirestore(app);
+const rtdb = getDatabase(app);
 
-export { db, collection, Timestamp };
+export { 
+  rtdb, 
+  ref, 
+  onValue, 
+  push, 
+  update, 
+  remove, 
+  serverTimestamp,
+  child,
+  orderByChild,
+  rtdbQuery
+};
+// Firestore specific exports are removed as we are switching to RTDB
+// import { getFirestore, collection, Timestamp } from 'firebase/firestore';
+// const db = getFirestore(app);
+// export { db, collection, Timestamp };
