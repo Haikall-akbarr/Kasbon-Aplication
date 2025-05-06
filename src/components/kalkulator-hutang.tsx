@@ -257,8 +257,8 @@ export default function KalkulatorHutang() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Apply items-start to the grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              {/* Apply items-baseline to the grid for better vertical alignment */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-baseline">
                 <FormField
                   control={form.control}
                   name="nama"
@@ -276,7 +276,7 @@ export default function KalkulatorHutang() {
                   control={form.control}
                   name="tanggal"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col"> {/* Keep flex-col for label above button */}
+                    <FormItem className="flex flex-col"> {/* Keep flex-col for label above */}
                        <FormLabel>Tanggal</FormLabel>
                        <Popover>
                          <PopoverTrigger asChild>
@@ -329,7 +329,7 @@ export default function KalkulatorHutang() {
                               type="number"
                               placeholder="Contoh: 500000"
                               {...field}
-                              className="pl-8 rounded-lg shadow-sm"
+                              className="pl-8 rounded-lg shadow-sm" // Ensure consistent height with other inputs
                            />
                         </div>
                       </FormControl>
@@ -345,7 +345,7 @@ export default function KalkulatorHutang() {
                       <FormLabel>Status</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="rounded-lg shadow-sm">
+                          <SelectTrigger className="rounded-lg shadow-sm"> {/* Ensure consistent height */}
                             <SelectValue placeholder="Pilih status hutang" />
                           </SelectTrigger>
                         </FormControl>
