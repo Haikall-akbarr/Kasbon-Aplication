@@ -55,7 +55,7 @@ import { PasswordDialog } from '@/components/password-dialog';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import {
-  useGetHutangList,
+  useHutang, // Changed from useGetHutangList
   useAddHutang,
   useUpdateHutang,
   useDeleteHutang,
@@ -87,7 +87,7 @@ interface PendingAction {
 
 
 export default function KalkulatorHutang() {
-  const { data: daftarHutang = [], isLoading: isLoadingHutang, error: fetchError } = useGetHutangList();
+  const { data: daftarHutang = [], isLoading: isLoadingHutang, error: fetchError } = useHutang(); // Changed from useGetHutangList
   const addHutangMutation = useAddHutang();
   const updateHutangMutation = useUpdateHutang();
   const deleteHutangMutation = useDeleteHutang();
@@ -103,7 +103,7 @@ export default function KalkulatorHutang() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       nama: '',
-      tanggal: new Date(), // Set to new Date() directly
+      tanggal: new Date(), 
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
@@ -111,10 +111,8 @@ export default function KalkulatorHutang() {
   });
 
    useEffect(() => {
-    // Set initial date only once if not editing and not already set
     if (!initialDateSet && !editingId) {
       const currentDateValue = form.getValues('tanggal');
-      // Check if the date is a valid date object, otherwise set it.
       if (!(currentDateValue instanceof Date) || isNaN(currentDateValue.getTime())) {
         form.setValue('tanggal', new Date(), { shouldValidate: true, shouldDirty: true });
       }
@@ -144,9 +142,9 @@ export default function KalkulatorHutang() {
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
           nominal: existingHutang.nominal + data.nominal,
-          tanggal: data.tanggal, // Update tanggal to new entry's date
-          status: data.status, // Update status to new entry's status
-          deskripsi: data.deskripsi || existingHutang.deskripsi, // Update deskripsi
+          tanggal: data.tanggal, 
+          status: data.status, 
+          deskripsi: data.deskripsi || existingHutang.deskripsi, 
         };
         await updateHutangMutation.mutateAsync(updatePayload);
         toast({
@@ -164,7 +162,7 @@ export default function KalkulatorHutang() {
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
-      setInitialDateSet(false); // Reset for next new entry
+      setInitialDateSet(false); 
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menambahkan/memperbarui hutang.', variant: 'destructive' });
       console.error("Firebase add/update error:", error);
@@ -184,7 +182,7 @@ export default function KalkulatorHutang() {
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
-      setInitialDateSet(false); // Reset for next new entry
+      setInitialDateSet(false); 
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal memperbarui hutang.', variant: 'destructive' });
       console.error("Firebase update error:", error);
@@ -223,10 +221,10 @@ export default function KalkulatorHutang() {
     setEditingId(hutang.id);
     form.reset({
       ...hutang,
-      tanggal: new Date(hutang.tanggal), // Ensure date is a Date object
+      tanggal: new Date(hutang.tanggal), 
       deskripsi: hutang.deskripsi || '',
     });
-    setInitialDateSet(true); // To prevent date reset by useEffect
+    setInitialDateSet(true); 
   };
 
   const handleCancelEdit = () => {
@@ -238,13 +236,13 @@ export default function KalkulatorHutang() {
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     });
-    setInitialDateSet(false); // Reset for next new entry
+    setInitialDateSet(false); 
   };
 
   const handlePasswordConfirm = async () => {
     if (!pendingAction) return;
 
-    setIsPasswordDialogOpen(false); // Close dialog immediately
+    setIsPasswordDialogOpen(false); 
 
     switch (pendingAction.type) {
       case 'add':
@@ -511,7 +509,7 @@ export default function KalkulatorHutang() {
        <PasswordDialog
         open={isPasswordDialogOpen}
         onOpenChange={(open) => {
-          if (!open) setPendingAction(null); // Clear pending action if dialog is closed manually
+          if (!open) setPendingAction(null); 
           setIsPasswordDialogOpen(open);
         }}
         onConfirm={handlePasswordConfirm}

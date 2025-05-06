@@ -1,7 +1,6 @@
 
 // src/components/password-dialog.tsx
-import type React from 'react';
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,7 +78,7 @@ export function PasswordDialog({
   };
 
   // Clear password when dialog opens or closes
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) {
       setEnteredPassword('');
       setPasswordError('');
