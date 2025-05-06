@@ -34,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id">
-      <head> {/* You can add metadata tags directly here for client components or manage via a different hook */}
+      <head>
         <title>Kasbon temen Guweh</title>
         <meta name="description" content="Aplikasi untuk menghitung dan mengelola hutang." />
       </head>
@@ -47,4 +47,3 @@ export default function RootLayout({
     </html>
   );
 }
-
