@@ -407,7 +407,7 @@ export default function KalkulatorHutang() {
                  <TableRow>
                    <TableHead className="whitespace-nowrap">Nama</TableHead>
                    <TableHead className="whitespace-nowrap">Tanggal</TableHead>
-                   <TableHead className="whitespace-nowrap">Deskripsi</TableHead> {/* Add Description Header */}
+                   <TableHead className="whitespace-nowrap">Deskripsi</TableHead>{/* Add Description Header */}
                    <TableHead className="text-right whitespace-nowrap">Nominal</TableHead>
                    <TableHead className="text-center whitespace-nowrap">Status</TableHead>
                    <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>
@@ -416,7 +416,7 @@ export default function KalkulatorHutang() {
                <TableBody>
                  {daftarHutang.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8"> {/* Updated colSpan to 6 */}
+                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">{/* Updated colSpan to 6 */}
                        Belum ada data hutang.
                      </TableCell>
                    </TableRow>
@@ -425,7 +425,7 @@ export default function KalkulatorHutang() {
                      <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150">
                        <TableCell className="font-medium">{hutang.nama}</TableCell>
                        <TableCell>{format(new Date(hutang.tanggal), 'dd MMMM yyyy', { locale: id })}</TableCell>
-                       <TableCell className="max-w-xs truncate text-muted-foreground">{hutang.deskripsi || '-'}</TableCell> {/* Add Description Cell */}
+                       <TableCell className="max-w-xs truncate text-muted-foreground">{hutang.deskripsi || '-'}</TableCell>{/* Add Description Cell */}
                        <TableCell className="text-right">{formatCurrency(hutang.nominal)}</TableCell>
                         <TableCell className="text-center">
                            <span className={cn(
