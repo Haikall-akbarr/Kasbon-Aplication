@@ -97,14 +97,15 @@ export default function KalkulatorHutang() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [initialDateSet, setInitialDateSet] = useState(false);
+  const [initialDate, setInitialDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
 
+  // Initialize the form
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       nama: '',
-      tanggal: undefined, 
+      // tanggal will be set by useEffect or when editing
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
@@ -112,11 +113,13 @@ export default function KalkulatorHutang() {
   });
 
    useEffect(() => {
-    if (!initialDateSet && !editingId && form.getValues('tanggal') === undefined) {
-        form.setValue('tanggal', new Date(), { shouldValidate: true, shouldDirty: true });
-        setInitialDateSet(true);
+    // Set initial date only once when the component mounts and no specific date is set by editing
+    if (initialDate === undefined && !editingId && form.getValues('tanggal') === undefined) {
+      const today = new Date();
+      setInitialDate(today);
+      form.setValue('tanggal', today, { shouldValidate: true, shouldDirty: true });
     }
-  }, [form, editingId, initialDateSet]);
+  }, [form, editingId, initialDate]);
 
 
   const hitungTotalHutang = useCallback(() => {
@@ -140,10 +143,8 @@ export default function KalkulatorHutang() {
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
           nominal: existingHutang.nominal + data.nominal,
-          // Keep existing tanggal, status, deskripsi if not explicitly changed for merged entry, or use new ones
-          // For simplicity, let's assume new data overwrites for these fields or combines description
-          tanggal: data.tanggal, 
-          status: data.status, // Or decide on a merging strategy for status
+          tanggal: data.tanggal,
+          status: data.status,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
         };
         await updateHutangMutation.mutateAsync(updatePayload);
@@ -157,12 +158,12 @@ export default function KalkulatorHutang() {
       }
       form.reset({
         nama: '',
-        tanggal: new Date(),
+        tanggal: new Date(), // Reset to current date
         nominal: 0,
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
-      setInitialDateSet(false); 
+      setInitialDate(new Date()); // Ensure new form uses current date
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menambahkan/memperbarui hutang.', variant: 'destructive' });
       console.error("RTDB add/update error:", error);
@@ -177,12 +178,12 @@ export default function KalkulatorHutang() {
       setEditingId(null);
       form.reset({
         nama: '',
-        tanggal: new Date(),
+        tanggal: new Date(), // Reset to current date
         nominal: 0,
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
-      setInitialDateSet(false); 
+      setInitialDate(new Date());
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal memperbarui hutang.', variant: 'destructive' });
       console.error("RTDB update error:", error);
@@ -221,28 +222,28 @@ export default function KalkulatorHutang() {
     setEditingId(hutang.id);
     form.reset({
       ...hutang,
-      tanggal: new Date(hutang.tanggal), // Ensure tanggal is a Date object for the form
+      tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
     });
-    setInitialDateSet(true); 
+     // No need to setInitialDate here, form is explicitly set
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     form.reset({
       nama: '',
-      tanggal: new Date(),
+      tanggal: new Date(), // Reset to current date
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     });
-    setInitialDateSet(false); 
+    setInitialDate(new Date());
   };
 
   const handlePasswordConfirm = async () => {
     if (!pendingAction) return;
 
-    setIsPasswordDialogOpen(false); 
+    setIsPasswordDialogOpen(false);
 
     switch (pendingAction.type) {
       case 'add':
@@ -483,11 +484,11 @@ export default function KalkulatorHutang() {
                            </span>
                        </TableCell>
                        <TableCell className="text-right space-x-1">
-                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-primary hover:text-primary/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
+                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-yellow-500 hover:text-yellow-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
                            <Edit2 className="h-4 w-4" />
                            <span className="sr-only">Edit</span>
                          </Button>
-                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-destructive hover:text-destructive/80 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
+                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-red-500 hover:text-red-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
                            <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Hapus</span>
                          </Button>
@@ -509,7 +510,7 @@ export default function KalkulatorHutang() {
        <PasswordDialog
         open={isPasswordDialogOpen}
         onOpenChange={(open) => {
-          if (!open) setPendingAction(null); 
+          if (!open) setPendingAction(null);
           setIsPasswordDialogOpen(open);
         }}
         onConfirm={handlePasswordConfirm}
