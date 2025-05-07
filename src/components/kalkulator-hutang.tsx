@@ -1,4 +1,3 @@
-
 // src/components/kalkulator-hutang.tsx
 'use client';
 
@@ -71,14 +70,39 @@ import { StatusHutang } from '@/types/hutang';
 const formSchema = z.object({
   nama: z.string().min(1, { message: 'Nama wajib diisi' }),
   tanggal: z.date({ required_error: 'Tanggal wajib diisi' }),
-  nominal: z.coerce
-    .number()
-    .positive({ message: 'Nominal harus lebih dari 0' }),
+  nominal: z.string() // Input will be string
+    .min(1, { message: 'Nominal wajib diisi' })
+    .transform((val, ctx) => {
+      const sanitized = val.replace(/[^0-9]/g, ''); // Remove non-digits (commas, periods)
+      if (sanitized === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Nominal tidak boleh kosong setelah pembersihan.",
+        });
+        return z.NEVER;
+      }
+      const num = parseInt(sanitized, 10);
+      if (isNaN(num)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Nominal harus berupa angka.",
+        });
+        return z.NEVER;
+      }
+      if (num <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Nominal harus lebih dari 0',
+        });
+        return z.NEVER;
+      }
+      return num; // Output is number
+    }),
   status: z.nativeEnum(StatusHutang),
   deskripsi: z.string().optional(),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<typeof formSchema>; // `nominal` will be number here due to transform
 
 interface PendingAction {
   type: 'add' | 'edit' | 'delete';
@@ -106,7 +130,7 @@ export default function KalkulatorHutang() {
     defaultValues: {
       nama: '',
       // tanggal will be set by useEffect or when editing
-      nominal: 0,
+      nominal: 0, // Default for the number type after transform. Input will handle string.
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     },
@@ -142,7 +166,7 @@ export default function KalkulatorHutang() {
       if (existingHutang && existingHutang.id) {
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
-          nominal: existingHutang.nominal + data.nominal,
+          nominal: existingHutang.nominal + data.nominal, // data.nominal is already a number
           tanggal: data.tanggal,
           status: data.status,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
@@ -153,13 +177,13 @@ export default function KalkulatorHutang() {
           description: `Jumlah hutang untuk ${data.nama} berhasil diperbarui.`,
         });
       } else {
-        await addHutangMutation.mutateAsync(data as AddHutangInput);
+        await addHutangMutation.mutateAsync(data as AddHutangInput); // data.nominal is already a number
         toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
       }
       form.reset({
         nama: '',
         tanggal: new Date(), // Reset to current date
-        nominal: 0,
+        nominal: 0, // Reset numeric form state
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
@@ -172,14 +196,14 @@ export default function KalkulatorHutang() {
 
   const executeEdit = async (data: FormValues, id: string) => {
     try {
-      const updatePayload: UpdateHutangInput = { id, ...data };
+      const updatePayload: UpdateHutangInput = { id, ...data }; // data.nominal is already a number
       await updateHutangMutation.mutateAsync(updatePayload);
       toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
       setEditingId(null);
       form.reset({
         nama: '',
         tanggal: new Date(), // Reset to current date
-        nominal: 0,
+        nominal: 0, // Reset numeric form state
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
@@ -205,6 +229,7 @@ export default function KalkulatorHutang() {
   };
 
   const onSubmit: SubmitHandler<FormValues> = (data) => {
+    // data.nominal is already a number here due to Zod transform
     if (editingId) {
       setPendingAction({ type: 'edit', data, id: editingId });
     } else {
@@ -220,12 +245,14 @@ export default function KalkulatorHutang() {
 
   const handleEdit = (hutang: Hutang) => {
     setEditingId(hutang.id);
+    // FormValues expects nominal as number, which hutang.nominal is.
+    // The Input component's value prop will handle converting this number to a string for display.
     form.reset({
       ...hutang,
       tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
+      nominal: hutang.nominal, // hutang.nominal is a number
     });
-     // No need to setInitialDate here, form is explicitly set
   };
 
   const handleCancelEdit = () => {
@@ -233,7 +260,7 @@ export default function KalkulatorHutang() {
     form.reset({
       nama: '',
       tanggal: new Date(), // Reset to current date
-      nominal: 0,
+      nominal: 0, // Reset numeric form state
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     });
@@ -343,7 +370,10 @@ export default function KalkulatorHutang() {
                           <Calendar
                             mode="single"
                             selected={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value : undefined}
-                            onSelect={field.onChange}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              if (date) setInitialDate(date); // Update initialDate if user selects a new date
+                            }}
                             disabled={(date) =>
                               date > new Date() || date < new Date('1900-01-01')
                             }
@@ -359,7 +389,7 @@ export default function KalkulatorHutang() {
                 <FormField
                   control={form.control}
                   name="nominal"
-                  render={({ field }) => (
+                  render={({ field: { onChange, value, ...restField } }) => (
                     <FormItem>
                       <FormLabel>Nominal</FormLabel>
                       <FormControl>
@@ -368,9 +398,16 @@ export default function KalkulatorHutang() {
                              Rp
                            </span>
                            <Input
-                              type="number"
-                              placeholder="Contoh: 500000"
-                              {...field}
+                              type="text" // Changed to text
+                              inputMode="decimal" // Suggests numeric keyboard, allows separators
+                              placeholder="Contoh: 50000"
+                              // Display empty for 0 on new/pristine form, else string of number
+                              value={ (value === 0 && !form.formState.dirtyFields.nominal && !editingId)
+                                      ? ''
+                                      : value.toString()
+                                    }
+                              onChange={(e) => onChange(e.target.value)} // Pass string value
+                              {...restField}
                               className="pl-8 rounded-lg shadow-sm"
                            />
                         </div>
