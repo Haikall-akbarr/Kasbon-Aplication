@@ -124,26 +124,24 @@ export default function KalkulatorHutang() {
   const [initialDate, setInitialDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
 
-  // Initialize the form
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       nama: '',
-      // tanggal will be set by useEffect or when editing
-      nominal: 0, // Default for the number type after transform. Input will handle string.
+      tanggal: new Date(),
+      nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     },
   });
 
    useEffect(() => {
-    // Set initial date only once when the component mounts and no specific date is set by editing
-    if (initialDate === undefined && !editingId && form.getValues('tanggal') === undefined) {
+    if (!form.getValues('tanggal') && !editingId) {
       const today = new Date();
-      setInitialDate(today);
       form.setValue('tanggal', today, { shouldValidate: true, shouldDirty: true });
+      setInitialDate(today);
     }
-  }, [form, editingId, initialDate]);
+  }, [form, editingId]);
 
 
   const hitungTotalHutang = useCallback(() => {
@@ -166,7 +164,7 @@ export default function KalkulatorHutang() {
       if (existingHutang && existingHutang.id) {
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
-          nominal: existingHutang.nominal + data.nominal, // data.nominal is already a number
+          nominal: existingHutang.nominal + data.nominal, 
           tanggal: data.tanggal,
           status: data.status,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
@@ -177,17 +175,17 @@ export default function KalkulatorHutang() {
           description: `Jumlah hutang untuk ${data.nama} berhasil diperbarui.`,
         });
       } else {
-        await addHutangMutation.mutateAsync(data as AddHutangInput); // data.nominal is already a number
+        await addHutangMutation.mutateAsync(data as AddHutangInput);
         toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
       }
       form.reset({
         nama: '',
-        tanggal: new Date(), // Reset to current date
-        nominal: 0, // Reset numeric form state
+        tanggal: new Date(), 
+        nominal: 0, 
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
-      setInitialDate(new Date()); // Ensure new form uses current date
+      setInitialDate(new Date()); 
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menambahkan/memperbarui hutang.', variant: 'destructive' });
       console.error("RTDB add/update error:", error);
@@ -196,14 +194,14 @@ export default function KalkulatorHutang() {
 
   const executeEdit = async (data: FormValues, id: string) => {
     try {
-      const updatePayload: UpdateHutangInput = { id, ...data }; // data.nominal is already a number
+      const updatePayload: UpdateHutangInput = { id, ...data }; 
       await updateHutangMutation.mutateAsync(updatePayload);
       toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
       setEditingId(null);
       form.reset({
         nama: '',
-        tanggal: new Date(), // Reset to current date
-        nominal: 0, // Reset numeric form state
+        tanggal: new Date(), 
+        nominal: 0, 
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
       });
@@ -229,7 +227,6 @@ export default function KalkulatorHutang() {
   };
 
   const onSubmit: SubmitHandler<FormValues> = (data) => {
-    // data.nominal is already a number here due to Zod transform
     if (editingId) {
       setPendingAction({ type: 'edit', data, id: editingId });
     } else {
@@ -245,13 +242,11 @@ export default function KalkulatorHutang() {
 
   const handleEdit = (hutang: Hutang) => {
     setEditingId(hutang.id);
-    // FormValues expects nominal as number, which hutang.nominal is.
-    // The Input component's value prop will handle converting this number to a string for display.
     form.reset({
       ...hutang,
       tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
-      nominal: hutang.nominal, // hutang.nominal is a number
+      nominal: hutang.nominal,
     });
   };
 
@@ -259,8 +254,8 @@ export default function KalkulatorHutang() {
     setEditingId(null);
     form.reset({
       nama: '',
-      tanggal: new Date(), // Reset to current date
-      nominal: 0, // Reset numeric form state
+      tanggal: new Date(), 
+      nominal: 0, 
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
     });
@@ -315,19 +310,19 @@ export default function KalkulatorHutang() {
 
   return (
     <div className="container mx-auto p-4 md:p-8">
-      <Card className="mb-8 shadow-lg rounded-xl">
-        <CardHeader>
-          <CardTitle className="text-2xl md:text-3xl font-bold text-center text-primary-foreground bg-primary p-4 rounded-t-xl">
+      <Card className="mb-8 shadow-xl rounded-xl">
+        <CardHeader className="bg-primary p-4 rounded-t-xl">
+          <CardTitle className="text-2xl md:text-3xl font-bold text-center text-primary-foreground">
             📝 Kasbon temen Guweh
           </CardTitle>
-          <CardDescription className="text-center pt-2 text-muted-foreground">
+          <CardDescription className="text-center pt-2 text-primary-foreground/80">
             Masukkan detail hutang Anda di bawah ini. Data akan disimpan online.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-start">
                 <FormField
                   control={form.control}
                   name="nama"
@@ -372,7 +367,7 @@ export default function KalkulatorHutang() {
                             selected={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value : undefined}
                             onSelect={(date) => {
                               field.onChange(date);
-                              if (date) setInitialDate(date); // Update initialDate if user selects a new date
+                              if (date) setInitialDate(date);
                             }}
                             disabled={(date) =>
                               date > new Date() || date < new Date('1900-01-01')
@@ -398,15 +393,17 @@ export default function KalkulatorHutang() {
                              Rp
                            </span>
                            <Input
-                              type="text" // Changed to text
-                              inputMode="decimal" // Suggests numeric keyboard, allows separators
+                              type="text" 
+                              inputMode="decimal" 
                               placeholder="Contoh: 50000"
-                              // Display empty for 0 on new/pristine form, else string of number
                               value={ (value === 0 && !form.formState.dirtyFields.nominal && !editingId)
                                       ? ''
-                                      : value.toString()
+                                      : value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') // Format with commas
                                     }
-                              onChange={(e) => onChange(e.target.value)} // Pass string value
+                              onChange={(e) => {
+                                const rawValue = e.target.value.replace(/[^0-9]/g, '');
+                                onChange(rawValue); // Pass sanitized string value
+                              }}
                               {...restField}
                               className="pl-8 rounded-lg shadow-sm"
                            />
@@ -474,8 +471,8 @@ export default function KalkulatorHutang() {
         </CardContent>
       </Card>
 
-       <Card className="shadow-lg rounded-xl">
-        <CardHeader className="border-b border-border">
+       <Card className="shadow-xl rounded-xl">
+        <CardHeader className="border-b border-border p-4">
           <CardTitle className="text-xl md:text-2xl font-semibold text-primary-foreground">Daftar Hutang</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -483,12 +480,12 @@ export default function KalkulatorHutang() {
              <Table>
                <TableHeader>
                  <TableRow>
-                   <TableHead className="whitespace-nowrap">Nama</TableHead>
-                   <TableHead className="whitespace-nowrap">Tanggal</TableHead>
-                   <TableHead className="whitespace-nowrap">Deskripsi</TableHead>
-                   <TableHead className="text-right whitespace-nowrap">Nominal</TableHead>
-                   <TableHead className="text-center whitespace-nowrap">Status</TableHead>
-                   <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>
+                   <TableHead className="whitespace-nowrap px-4 py-3">Nama</TableHead>
+                   <TableHead className="whitespace-nowrap px-4 py-3">Tanggal</TableHead>
+                   <TableHead className="whitespace-nowrap px-4 py-3">Deskripsi</TableHead>
+                   <TableHead className="text-right whitespace-nowrap px-4 py-3">Nominal</TableHead>
+                   <TableHead className="text-center whitespace-nowrap px-4 py-3">Status</TableHead>
+                   <TableHead className="text-right whitespace-nowrap px-4 py-3">Aksi</TableHead>
                  </TableRow>
                </TableHeader>
                <TableBody>
@@ -507,12 +504,12 @@ export default function KalkulatorHutang() {
                    </TableRow>
                  ) : (
                    daftarHutang.map((hutang) => (
-                     <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150">
-                       <TableCell className="font-medium">{hutang.nama}</TableCell>
-                       <TableCell>{hutang.tanggal instanceof Date && !isNaN(hutang.tanggal.getTime()) ? format(hutang.tanggal, 'dd MMMM yyyy', { locale: id }) : 'Invalid Date'}</TableCell>
-                       <TableCell className="max-w-xs truncate text-muted-foreground">{hutang.deskripsi || '-'}</TableCell>
-                       <TableCell className="text-right">{formatCurrency(hutang.nominal)}</TableCell>
-                        <TableCell className="text-center">
+                     <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150 even:bg-muted/20">
+                       <TableCell className="font-medium px-4 py-3">{hutang.nama}</TableCell>
+                       <TableCell className="px-4 py-3">{hutang.tanggal instanceof Date && !isNaN(hutang.tanggal.getTime()) ? format(hutang.tanggal, 'dd MMMM yyyy', { locale: id }) : 'Invalid Date'}</TableCell>
+                       <TableCell className="max-w-xs truncate text-muted-foreground px-4 py-3">{hutang.deskripsi || '-'}</TableCell>
+                       <TableCell className="text-right px-4 py-3">{formatCurrency(hutang.nominal)}</TableCell>
+                        <TableCell className="text-center px-4 py-3">
                            <span className={cn(
                               "px-3 py-1 rounded-full text-xs font-semibold shadow-sm",
                               getStatusClass(hutang.status)
@@ -520,12 +517,12 @@ export default function KalkulatorHutang() {
                               {hutang.status}
                            </span>
                        </TableCell>
-                       <TableCell className="text-right space-x-1">
-                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-yellow-500 hover:text-yellow-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
+                       <TableCell className="text-right space-x-1 px-4 py-3">
+                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-yellow-500 hover:text-yellow-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
                            <Edit2 className="h-4 w-4" />
                            <span className="sr-only">Edit</span>
                          </Button>
-                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-red-500 hover:text-red-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all" disabled={isMutating}>
+                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-red-500 hover:text-red-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
                            <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Hapus</span>
                          </Button>
@@ -537,9 +534,9 @@ export default function KalkulatorHutang() {
              </Table>
            </div>
         </CardContent>
-         <CardFooter className="flex justify-end bg-secondary p-4 rounded-b-xl border-t border-border">
+         <CardFooter className="flex justify-end bg-secondary p-4 rounded-b-xl border-t border-border mt-0">
           <div className="text-lg md:text-xl font-bold text-secondary-foreground">
-            Total Hutang (Belum Lunas/Sebagian): {formatCurrency(totalHutang)}
+            Total Hutang (Belum/Sebagian Lunas): {formatCurrency(totalHutang)}
           </div>
         </CardFooter>
       </Card>

@@ -1,4 +1,3 @@
-
 // src/components/password-dialog.tsx
 import React, { useState, useEffect } from 'react';
 import {
@@ -16,14 +15,14 @@ import { Label } from '@/components/ui/label';
 import { Button } from './ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react'; // Import Loader2
+import { Loader2 } from 'lucide-react';
 
 interface PasswordDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   correctPassword?: string;
-  isConfirming?: boolean; // New prop for loading state
+  isConfirming?: boolean;
 }
 
 const DEFAULT_PASSWORD = process.env.NEXT_PUBLIC_ACTION_PASSWORD || 'haekal ganteng';
@@ -33,7 +32,7 @@ export function PasswordDialog({
   onOpenChange,
   onConfirm,
   correctPassword = DEFAULT_PASSWORD,
-  isConfirming = false, // Default to false
+  isConfirming = false,
 }: PasswordDialogProps) {
   const [enteredPassword, setEnteredPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -45,14 +44,10 @@ export function PasswordDialog({
   };
 
   const handleConfirmClick = () => {
-    if (isConfirming) return; // Prevent multiple clicks while confirming
+    if (isConfirming) return;
 
     if (enteredPassword === correctPassword) {
       onConfirm();
-      // Success toast is now handled by the calling component after the async action completes
-      // setPasswordError('');
-      // onOpenChange(false); // Dialog is closed by onConfirm or by the calling component
-      // No need to clear password here, as the dialog will close or action completes
     } else {
       setPasswordError('Password salah. Silakan coba lagi.');
       toast({
@@ -77,7 +72,6 @@ export function PasswordDialog({
     }
   };
 
-  // Clear password when dialog opens or closes
   useEffect(() => {
     if (!open) {
       setEnteredPassword('');
@@ -87,14 +81,14 @@ export function PasswordDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="rounded-xl shadow-xl">
         <AlertDialogHeader>
           <AlertDialogTitle>Konfirmasi Aksi</AlertDialogTitle>
           <AlertDialogDescription>
             Untuk melanjutkan, masukkan password. Password default: haekal ganteng
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="space-y-2">
+        <div className="space-y-2 py-2">
           <Label htmlFor="password">Password</Label>
           <Input
             id="password"
@@ -103,7 +97,10 @@ export function PasswordDialog({
             onChange={handlePasswordChange}
             onKeyDown={handleKeyDown}
             placeholder="Masukkan password..."
-            className={passwordError ? 'border-destructive' : ''}
+            className={cn(
+              "rounded-lg shadow-sm",
+              passwordError ? 'border-destructive focus-visible:ring-destructive' : ''
+            )}
             disabled={isConfirming}
           />
           {passwordError && (
@@ -112,13 +109,13 @@ export function PasswordDialog({
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel asChild>
-            <Button variant="outline" onClick={handleCancelClick} disabled={isConfirming}>
+            <Button variant="outline" onClick={handleCancelClick} disabled={isConfirming} className="rounded-lg shadow-sm">
               Batal
             </Button>
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirmClick}
-            className="bg-accent hover:bg-accent/90 text-accent-foreground"
+            className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg shadow-md"
             disabled={isConfirming}
           >
             {isConfirming ? (
