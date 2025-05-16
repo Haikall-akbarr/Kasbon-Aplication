@@ -143,31 +143,31 @@ export default function KalkulatorHutang() {
     defaultValues: {
       nama: '',
       tanggal: new Date(),
-      nominal: 0,
+      nominal: 0, // Stored as number, displayed as string
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
       fotoDataUri: undefined,
     },
   });
+  const { setValue, getValues } = form;
 
    useEffect(() => {
-    // Set initial date for new entries or when editing
     if (!editingId) {
         const today = new Date();
-        if (!form.getValues('tanggal') || form.getValues('tanggal').getTime() !== today.getTime()) {
-            form.setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
-        }
         setInitialDate(today);
+        const currentFormDate = getValues('tanggal');
+        if (!(currentFormDate instanceof Date) || !currentFormDate || currentFormDate.toDateString() !== today.toDateString()) {
+            setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
+        }
     } else {
         const hutangToEdit = daftarHutang.find(h => h.id === editingId);
         if (hutangToEdit) {
             const editDate = new Date(hutangToEdit.tanggal);
             setInitialDate(editDate);
             setImagePreview(hutangToEdit.fotoDataUri || null);
-            // form.setValue('tanggal', editDate, { shouldValidate: true, shouldDirty: true }); // Already set in handleEdit
         }
     }
-  }, [form, editingId, daftarHutang]);
+  }, [editingId, daftarHutang, setValue, getValues]);
 
 
   const hitungTotalHutang = useCallback(() => {
@@ -193,7 +193,7 @@ export default function KalkulatorHutang() {
           id: existingHutang.id,
           nominal: existingHutang.nominal + data.nominal, 
           tanggal: data.tanggal,
-          status: data.status, 
+          status: data.nominal >= existingHutang.nominal + data.nominal ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS, // Auto-adjust status
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
           fotoDataUri: finalFotoDataUri,
         };
@@ -203,7 +203,11 @@ export default function KalkulatorHutang() {
           description: `Jumlah hutang untuk ${data.nama} berhasil diperbarui.`,
         });
       } else {
-        await addHutangMutation.mutateAsync(data as AddHutangInput);
+         const addPayload: AddHutangInput = {
+          ...data,
+          fotoDataUri: finalFotoDataUri, // Ensure fotoDataUri is included
+        };
+        await addHutangMutation.mutateAsync(addPayload);
         toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
       }
       form.reset({
@@ -225,7 +229,11 @@ export default function KalkulatorHutang() {
 
   const executeEdit = async (data: FormValues, id: string) => {
     try {
-      const updatePayload: UpdateHutangInput = { id, ...data }; 
+      const updatePayload: UpdateHutangInput = { 
+        id, 
+        ...data, 
+        nominal: data.nominal, // Ensure nominal is passed as number
+      }; 
       await updateHutangMutation.mutateAsync(updatePayload);
       toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
       setEditingId(null);
@@ -262,9 +270,9 @@ export default function KalkulatorHutang() {
 
   const onSubmit: SubmitHandler<FormValues> = (data) => {
     if (editingId) {
-      setPendingAction({ type: 'edit', data, id: editingId });
+      setPendingAction({ type: 'edit', data: { ...data, nominal: data.nominal }, id: editingId });
     } else {
-      setPendingAction({ type: 'add', data });
+      setPendingAction({ type: 'add', data: { ...data, nominal: data.nominal } });
     }
     setIsPasswordDialogOpen(true);
   };
@@ -280,10 +288,10 @@ export default function KalkulatorHutang() {
       ...hutang,
       tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
-      nominal: hutang.nominal,
+      nominal: hutang.nominal, // Pass as number
       fotoDataUri: hutang.fotoDataUri || undefined,
     });
-    setImagePreview(hutang.fotoDataUri || null);
+    // setImagePreview is handled by useEffect based on editingId
   };
 
   const handleCancelEdit = () => {
@@ -439,7 +447,7 @@ export default function KalkulatorHutang() {
                             onSelect={(date) => {
                               if (date) {
                                 field.onChange(date);
-                                setInitialDate(date);
+                                // setInitialDate(date); // Removed to prevent potential update loops
                               }
                             }}
                             disabled={(date) =>
@@ -469,13 +477,13 @@ export default function KalkulatorHutang() {
                               type="text" 
                               inputMode="numeric" 
                               placeholder="Contoh: 50000"
-                              value={ (value === 0 && !form.formState.dirtyFields.nominal && !editingId)
+                              value={ (value === 0 && !form.formState.dirtyFields.nominal && !editingId && typeof value === 'number')
                                       ? ''
-                                      : typeof value === 'number' ? value.toLocaleString('id-ID') : value
+                                      : typeof value === 'number' ? value.toLocaleString('id-ID') : value || ''
                                     }
                               onChange={(e) => {
                                 const rawValue = e.target.value.replace(/[^0-9]/g, '');
-                                onChange(rawValue);
+                                onChange(rawValue); // Pass the raw string to RHF
                               }}
                               {...restField}
                               className="pl-8 rounded-lg shadow-inner bg-background/70 border-border/50 focus:border-accent focus:ring-accent"
@@ -622,7 +630,7 @@ export default function KalkulatorHutang() {
                      <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150 ease-in-out even:bg-background/30 dark:even:bg-muted/10 border-b-border/20">
                        <TableCell className="px-4 py-3">
                          {hutang.fotoDataUri ? (
-                           <div className="relative group cursor-pointer" onClick={() => handleViewImage(hutang.fotoDataUri!)}>
+                           <div className="relative group cursor-pointer" onClick={() => hutang.fotoDataUri && handleViewImage(hutang.fotoDataUri)}>
                              <img src={hutang.fotoDataUri} alt={`Foto ${hutang.nama}`} className="h-16 w-16 object-cover rounded-md shadow-md border border-border/20" />
                               <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
                                 <Eye className="h-6 w-6 text-white" />
@@ -704,5 +712,3 @@ export default function KalkulatorHutang() {
     </div>
   );
 }
-
-    
