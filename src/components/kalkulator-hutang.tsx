@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { CalendarIcon, PlusCircle, Trash2, Edit2, Loader2, ImageUp, XCircle } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2, Edit2, Loader2, ImageUp, XCircle, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 
@@ -55,6 +55,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { PasswordDialog } from '@/components/password-dialog';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from '@/components/ui/dialog';
 import {
   useHutang,
   useAddHutang,
@@ -123,9 +131,11 @@ export default function KalkulatorHutang() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [initialDate, setInitialDate] = useState<Date | undefined>(new Date());
+  const [initialDate, setInitialDate] = useState<Date | undefined>(undefined);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedImageForView, setSelectedImageForView] = useState<string | null>(null);
+  const [isImageViewDialogOpen, setIsImageViewDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
@@ -141,18 +151,21 @@ export default function KalkulatorHutang() {
   });
 
    useEffect(() => {
-    if (!form.getValues('tanggal') && !editingId) {
-      const today = new Date();
-      form.setValue('tanggal', today, { shouldValidate: true, shouldDirty: true });
-      setInitialDate(today);
-    } else if (editingId) {
+    // Set initial date for new entries or when editing
+    if (!editingId) {
+        const today = new Date();
+        if (!form.getValues('tanggal') || form.getValues('tanggal').getTime() !== today.getTime()) {
+            form.setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
+        }
+        setInitialDate(today);
+    } else {
         const hutangToEdit = daftarHutang.find(h => h.id === editingId);
         if (hutangToEdit) {
-            setInitialDate(new Date(hutangToEdit.tanggal));
+            const editDate = new Date(hutangToEdit.tanggal);
+            setInitialDate(editDate);
             setImagePreview(hutangToEdit.fotoDataUri || null);
+            // form.setValue('tanggal', editDate, { shouldValidate: true, shouldDirty: true }); // Already set in handleEdit
         }
-    } else {
-        setInitialDate(form.getValues('tanggal') || new Date());
     }
   }, [form, editingId, daftarHutang]);
 
@@ -180,7 +193,7 @@ export default function KalkulatorHutang() {
           id: existingHutang.id,
           nominal: existingHutang.nominal + data.nominal, 
           tanggal: data.tanggal,
-          status: data.status, // Sebaiknya status dipertimbangkan, mungkin tidak selalu sama
+          status: data.status, 
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
           fotoDataUri: finalFotoDataUri,
         };
@@ -267,7 +280,7 @@ export default function KalkulatorHutang() {
       ...hutang,
       tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
-      nominal: hutang.nominal, // Ini sudah number dari transform
+      nominal: hutang.nominal,
       fotoDataUri: hutang.fotoDataUri || undefined,
     });
     setImagePreview(hutang.fotoDataUri || null);
@@ -316,7 +329,7 @@ export default function KalkulatorHutang() {
           description: "Ukuran file maksimal adalah 5MB.",
           variant: "destructive",
         });
-        if(fileInputRef.current) fileInputRef.current.value = ""; // Reset input file
+        if(fileInputRef.current) fileInputRef.current.value = ""; 
         return;
       }
       const reader = new FileReader();
@@ -351,6 +364,11 @@ export default function KalkulatorHutang() {
       default:
         return 'text-foreground bg-background';
     }
+  };
+
+  const handleViewImage = (imageUrl: string) => {
+    setSelectedImageForView(imageUrl);
+    setIsImageViewDialogOpen(true);
   };
 
   const isMutating = addHutangMutation.isPending || updateHutangMutation.isPending || deleteHutangMutation.isPending;
@@ -403,8 +421,10 @@ export default function KalkulatorHutang() {
                                 !field.value && 'text-muted-foreground'
                               )}
                             >
-                              {field.value instanceof Date && !isNaN(field.value.getTime()) ? (
+                              {(field.value instanceof Date && !isNaN(field.value.getTime())) ? (
                                 format(field.value, 'PPP', { locale: id })
+                              ) : initialDate ? (
+                                format(initialDate, 'PPP', { locale: id })
                               ) : (
                                 <span>Pilih tanggal</span>
                               )}
@@ -523,7 +543,7 @@ export default function KalkulatorHutang() {
                             className="rounded-lg shadow-inner bg-background/70 border-border/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/80 file:text-primary-foreground hover:file:bg-primary cursor-pointer focus:border-accent focus:ring-accent"
                           />
                           {imagePreview && (
-                            <div className="mt-2 p-2 border border-border/50 rounded-lg shadow-sm bg-background/50 relative">
+                            <div className="mt-2 p-2 border border-border/50 rounded-lg shadow-sm bg-background/50 relative group">
                               <img src={imagePreview} alt="Pratinjau Gambar" className="h-32 w-32 object-cover rounded-md" />
                               <Button
                                 type="button"
@@ -534,7 +554,7 @@ export default function KalkulatorHutang() {
                                   setImagePreview(null);
                                   if (fileInputRef.current) fileInputRef.current.value = "";
                                 }}
-                                className="absolute top-1 right-1 bg-card/70 hover:bg-destructive/80 hover:text-destructive-foreground text-destructive h-7 w-7 rounded-full"
+                                className="absolute top-1 right-1 bg-card/70 hover:bg-destructive/80 hover:text-destructive-foreground text-destructive h-7 w-7 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                               >
                                 <XCircle className="h-5 w-5" />
                                 <span className="sr-only">Hapus Gambar</span>
@@ -602,7 +622,12 @@ export default function KalkulatorHutang() {
                      <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150 ease-in-out even:bg-background/30 dark:even:bg-muted/10 border-b-border/20">
                        <TableCell className="px-4 py-3">
                          {hutang.fotoDataUri ? (
-                           <img src={hutang.fotoDataUri} alt={`Foto ${hutang.nama}`} className="h-16 w-16 object-cover rounded-md shadow-md border border-border/20" />
+                           <div className="relative group cursor-pointer" onClick={() => handleViewImage(hutang.fotoDataUri!)}>
+                             <img src={hutang.fotoDataUri} alt={`Foto ${hutang.nama}`} className="h-16 w-16 object-cover rounded-md shadow-md border border-border/20" />
+                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
+                                <Eye className="h-6 w-6 text-white" />
+                              </div>
+                           </div>
                          ) : (
                            <div className="h-16 w-16 bg-muted/40 rounded-md flex items-center justify-center shadow-sm border border-border/20">
                              <ImageUp className="h-8 w-8 text-muted-foreground/50" />
@@ -654,6 +679,30 @@ export default function KalkulatorHutang() {
         onConfirm={handlePasswordConfirm}
         isConfirming={isMutating}
       />
+
+      {selectedImageForView && (
+        <Dialog open={isImageViewDialogOpen} onOpenChange={setIsImageViewDialogOpen}>
+          <DialogContent className="max-w-3xl p-0 border-none shadow-xl rounded-xl overflow-hidden bg-background/90 backdrop-blur-md">
+            <DialogHeader className="p-2 absolute top-0 right-0 z-10">
+               <DialogClose asChild>
+                <Button variant="ghost" size="icon" className="text-foreground/70 hover:text-foreground hover:bg-background/70 rounded-full h-9 w-9">
+                  <XCircle className="h-6 w-6" />
+                  <span className="sr-only">Tutup</span>
+                </Button>
+              </DialogClose>
+            </DialogHeader>
+            <div className="flex justify-center items-center max-h-[80vh] p-4 md:p-8">
+              <img
+                src={selectedImageForView}
+                alt="Pratinjau Gambar Diperbesar"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
+
+    
