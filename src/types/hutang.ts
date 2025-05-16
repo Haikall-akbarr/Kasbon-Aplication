@@ -16,6 +16,7 @@ export interface HutangDocument {
   nominal: number;
   status: StatusHutangValue;
   deskripsi?: string;
+  fotoDataUri?: string; // URI data untuk gambar (opsional)
   // Firebase Realtime Database typically uses a server-generated timestamp for ordering if needed
   // createdAt?: object; // e.g. serverTimestamp()
 }
@@ -25,4 +26,5 @@ export interface Hutang extends Omit<HutangDocument, 'tanggal' | 'id'> {
   id: string; // Realtime Database key/ID
   tanggal: Date;
   deskripsi: string; // Ensure deskripsi is always a string for the component
+  fotoDataUri?: string; // URI data untuk gambar (opsional)
 }

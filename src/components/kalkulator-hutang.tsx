@@ -1,12 +1,13 @@
+
 // src/components/kalkulator-hutang.tsx
 'use client';
 
 import type React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { CalendarIcon, PlusCircle, Trash2, Edit2, Loader2 } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2, Edit2, Loader2, ImageUp, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 
@@ -70,10 +71,10 @@ import { StatusHutang } from '@/types/hutang';
 const formSchema = z.object({
   nama: z.string().min(1, { message: 'Nama wajib diisi' }),
   tanggal: z.date({ required_error: 'Tanggal wajib diisi' }),
-  nominal: z.string() // Input will be string
+  nominal: z.string()
     .min(1, { message: 'Nominal wajib diisi' })
     .transform((val, ctx) => {
-      const sanitized = val.replace(/[^0-9]/g, ''); // Remove non-digits (commas, periods)
+      const sanitized = val.replace(/[^0-9]/g, '');
       if (sanitized === '') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -96,18 +97,19 @@ const formSchema = z.object({
         });
         return z.NEVER;
       }
-      return num; // Output is number
+      return num;
     }),
   status: z.nativeEnum(StatusHutang),
   deskripsi: z.string().optional(),
+  fotoDataUri: z.string().optional(), // Untuk menyimpan data URI gambar
 });
 
-type FormValues = z.infer<typeof formSchema>; // `nominal` will be number here due to transform
+type FormValues = z.infer<typeof formSchema>;
 
 interface PendingAction {
   type: 'add' | 'edit' | 'delete';
-  data?: FormValues; // For add/edit
-  id?: string;       // For edit/delete
+  data?: FormValues;
+  id?: string;
 }
 
 
@@ -121,7 +123,9 @@ export default function KalkulatorHutang() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [initialDate, setInitialDate] = useState<Date | undefined>(undefined);
+  const [initialDate, setInitialDate] = useState<Date | undefined>(new Date());
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
@@ -132,6 +136,7 @@ export default function KalkulatorHutang() {
       nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
+      fotoDataUri: undefined,
     },
   });
 
@@ -140,8 +145,16 @@ export default function KalkulatorHutang() {
       const today = new Date();
       form.setValue('tanggal', today, { shouldValidate: true, shouldDirty: true });
       setInitialDate(today);
+    } else if (editingId) {
+        const hutangToEdit = daftarHutang.find(h => h.id === editingId);
+        if (hutangToEdit) {
+            setInitialDate(new Date(hutangToEdit.tanggal));
+            setImagePreview(hutangToEdit.fotoDataUri || null);
+        }
+    } else {
+        setInitialDate(form.getValues('tanggal') || new Date());
     }
-  }, [form, editingId]);
+  }, [form, editingId, daftarHutang]);
 
 
   const hitungTotalHutang = useCallback(() => {
@@ -159,6 +172,7 @@ export default function KalkulatorHutang() {
 
   const executeAdd = async (data: FormValues) => {
     const existingHutang = findExistingHutangByName(daftarHutang, data.nama);
+    const finalFotoDataUri = data.fotoDataUri || (existingHutang ? existingHutang.fotoDataUri : undefined);
 
     try {
       if (existingHutang && existingHutang.id) {
@@ -166,8 +180,9 @@ export default function KalkulatorHutang() {
           id: existingHutang.id,
           nominal: existingHutang.nominal + data.nominal, 
           tanggal: data.tanggal,
-          status: data.status,
+          status: data.status, // Sebaiknya status dipertimbangkan, mungkin tidak selalu sama
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
+          fotoDataUri: finalFotoDataUri,
         };
         await updateHutangMutation.mutateAsync(updatePayload);
         toast({
@@ -184,7 +199,10 @@ export default function KalkulatorHutang() {
         nominal: 0, 
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
+        fotoDataUri: undefined,
       });
+      setImagePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setInitialDate(new Date()); 
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menambahkan/memperbarui hutang.', variant: 'destructive' });
@@ -204,7 +222,10 @@ export default function KalkulatorHutang() {
         nominal: 0, 
         status: StatusHutang.BELUM_LUNAS,
         deskripsi: '',
+        fotoDataUri: undefined,
       });
+      setImagePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setInitialDate(new Date());
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal memperbarui hutang.', variant: 'destructive' });
@@ -246,8 +267,10 @@ export default function KalkulatorHutang() {
       ...hutang,
       tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
-      nominal: hutang.nominal,
+      nominal: hutang.nominal, // Ini sudah number dari transform
+      fotoDataUri: hutang.fotoDataUri || undefined,
     });
+    setImagePreview(hutang.fotoDataUri || null);
   };
 
   const handleCancelEdit = () => {
@@ -258,7 +281,10 @@ export default function KalkulatorHutang() {
       nominal: 0, 
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
+      fotoDataUri: undefined,
     });
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setInitialDate(new Date());
   };
 
@@ -279,6 +305,31 @@ export default function KalkulatorHutang() {
         break;
     }
     setPendingAction(null);
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // Batas 5MB
+        toast({
+          title: "Ukuran File Terlalu Besar",
+          description: "Ukuran file maksimal adalah 5MB.",
+          variant: "destructive",
+        });
+        if(fileInputRef.current) fileInputRef.current.value = ""; // Reset input file
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUri = reader.result as string;
+        form.setValue('fotoDataUri', dataUri, { shouldValidate: true, shouldDirty: true });
+        setImagePreview(dataUri);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      form.setValue('fotoDataUri', undefined, { shouldValidate: true, shouldDirty: true });
+      setImagePreview(null);
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -309,28 +360,28 @@ export default function KalkulatorHutang() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-8">
-      <Card className="mb-8 shadow-xl rounded-xl">
-        <CardHeader className="bg-primary p-4 rounded-t-xl">
-          <CardTitle className="text-2xl md:text-3xl font-bold text-center text-primary-foreground">
+    <div className="container mx-auto p-4 md:p-8 bg-gradient-to-br from-background to-secondary/30 min-h-screen">
+      <Card className="mb-8 shadow-2xl rounded-xl overflow-hidden border-none bg-card/80 backdrop-blur-sm">
+        <CardHeader className="bg-primary/80 p-6 rounded-t-xl border-b border-border/20">
+          <CardTitle className="text-3xl md:text-4xl font-bold text-center text-primary-foreground drop-shadow-md">
             📝 Kasbon temen Guweh
           </CardTitle>
-          <CardDescription className="text-center pt-2 text-primary-foreground/80">
+          <CardDescription className="text-center pt-2 text-primary-foreground/90 text-sm">
             Masukkan detail hutang Anda di bawah ini. Data akan disimpan online.
           </CardDescription>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 p-4 md:p-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 items-start">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 items-start">
                 <FormField
                   control={form.control}
                   name="nama"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nama</FormLabel>
+                      <FormLabel className="font-semibold text-foreground/90">Nama</FormLabel>
                       <FormControl>
-                        <Input placeholder="Contoh: Budi Santoso" {...field} className="rounded-lg shadow-sm" />
+                        <Input placeholder="Contoh: Budi Santoso" {...field} className="rounded-lg shadow-inner bg-background/70 border-border/50 focus:border-accent focus:ring-accent" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -341,14 +392,14 @@ export default function KalkulatorHutang() {
                   name="tanggal"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel>Tanggal</FormLabel>
+                      <FormLabel className="font-semibold text-foreground/90">Tanggal</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
                               variant={'outline'}
                               className={cn(
-                                'w-full pl-3 text-left font-normal rounded-lg shadow-sm',
+                                'w-full pl-3 text-left font-normal rounded-lg shadow-inner bg-background/70 border-border/50 hover:border-accent focus:border-accent focus:ring-accent',
                                 !field.value && 'text-muted-foreground'
                               )}
                             >
@@ -361,13 +412,15 @@ export default function KalkulatorHutang() {
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 rounded-lg shadow-lg" align="start">
+                        <PopoverContent className="w-auto p-0 rounded-lg shadow-xl border-border/50 bg-popover" align="start">
                           <Calendar
                             mode="single"
-                            selected={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value : undefined}
+                            selected={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value : initialDate}
                             onSelect={(date) => {
-                              field.onChange(date);
-                              if (date) setInitialDate(date);
+                              if (date) {
+                                field.onChange(date);
+                                setInitialDate(date);
+                              }
                             }}
                             disabled={(date) =>
                               date > new Date() || date < new Date('1900-01-01')
@@ -386,7 +439,7 @@ export default function KalkulatorHutang() {
                   name="nominal"
                   render={({ field: { onChange, value, ...restField } }) => (
                     <FormItem>
-                      <FormLabel>Nominal</FormLabel>
+                      <FormLabel className="font-semibold text-foreground/90">Nominal</FormLabel>
                       <FormControl>
                         <div className="relative">
                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
@@ -394,18 +447,18 @@ export default function KalkulatorHutang() {
                            </span>
                            <Input
                               type="text" 
-                              inputMode="decimal" 
+                              inputMode="numeric" 
                               placeholder="Contoh: 50000"
                               value={ (value === 0 && !form.formState.dirtyFields.nominal && !editingId)
                                       ? ''
-                                      : value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') // Format with commas
+                                      : typeof value === 'number' ? value.toLocaleString('id-ID') : value
                                     }
                               onChange={(e) => {
                                 const rawValue = e.target.value.replace(/[^0-9]/g, '');
-                                onChange(rawValue); // Pass sanitized string value
+                                onChange(rawValue);
                               }}
                               {...restField}
-                              className="pl-8 rounded-lg shadow-sm"
+                              className="pl-8 rounded-lg shadow-inner bg-background/70 border-border/50 focus:border-accent focus:ring-accent"
                            />
                         </div>
                       </FormControl>
@@ -418,14 +471,14 @@ export default function KalkulatorHutang() {
                   name="status"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Status</FormLabel>
+                      <FormLabel className="font-semibold text-foreground/90">Status</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <SelectTrigger className="rounded-lg shadow-sm">
+                          <SelectTrigger className="rounded-lg shadow-inner bg-background/70 border-border/50 focus:border-accent focus:ring-accent">
                             <SelectValue placeholder="Pilih status hutang" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="rounded-lg shadow-lg">
+                        <SelectContent className="rounded-lg shadow-xl border-border/50 bg-popover">
                           {Object.entries(StatusHutang).map(([key, value]) => (
                              <SelectItem key={key} value={value}>
                                {value}
@@ -442,11 +495,11 @@ export default function KalkulatorHutang() {
                   name="deskripsi"
                   render={({ field }) => (
                     <FormItem className="md:col-span-2">
-                      <FormLabel>Deskripsi (Opsional)</FormLabel>
+                      <FormLabel className="font-semibold text-foreground/90">Deskripsi (Opsional)</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="Contoh: Pinjam buat makan siang, Beli jajan sore"
-                          className="rounded-lg shadow-sm resize-none"
+                          className="rounded-lg shadow-inner resize-none bg-background/70 border-border/50 focus:border-accent focus:ring-accent"
                           {...field}
                         />
                       </FormControl>
@@ -454,15 +507,55 @@ export default function KalkulatorHutang() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="fotoDataUri"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel className="font-semibold text-foreground/90">Foto (Opsional, Max 5MB)</FormLabel>
+                      <FormControl>
+                        <div className="flex flex-col items-start gap-3">
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            ref={fileInputRef}
+                            onChange={handleFileChange}
+                            className="rounded-lg shadow-inner bg-background/70 border-border/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/80 file:text-primary-foreground hover:file:bg-primary cursor-pointer focus:border-accent focus:ring-accent"
+                          />
+                          {imagePreview && (
+                            <div className="mt-2 p-2 border border-border/50 rounded-lg shadow-sm bg-background/50 relative">
+                              <img src={imagePreview} alt="Pratinjau Gambar" className="h-32 w-32 object-cover rounded-md" />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  form.setValue('fotoDataUri', undefined, { shouldValidate: true, shouldDirty: true });
+                                  setImagePreview(null);
+                                  if (fileInputRef.current) fileInputRef.current.value = "";
+                                }}
+                                className="absolute top-1 right-1 bg-card/70 hover:bg-destructive/80 hover:text-destructive-foreground text-destructive h-7 w-7 rounded-full"
+                              >
+                                <XCircle className="h-5 w-5" />
+                                <span className="sr-only">Hapus Gambar</span>
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
-              <div className="flex justify-end space-x-2 pt-4">
+              <div className="flex justify-end space-x-3 pt-4">
                  {editingId && (
-                   <Button type="button" variant="outline" onClick={handleCancelEdit} className="rounded-lg shadow-sm" disabled={isMutating}>
+                   <Button type="button" variant="outline" onClick={handleCancelEdit} className="rounded-lg shadow-md border-border/50 hover:border-accent hover:text-accent" disabled={isMutating}>
                      Batal Edit
                    </Button>
                  )}
-                <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg shadow-md" disabled={isMutating}>
-                   {isMutating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingId ? <Edit2 className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
+                <Button type="submit" className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg shadow-lg transition-transform duration-150 ease-in-out hover:scale-105 active:scale-95" disabled={isMutating}>
+                   {isMutating ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : (editingId ? <Edit2 className="mr-2 h-5 w-5" /> : <PlusCircle className="mr-2 h-5 w-5" />)}
                   {editingId ? 'Simpan Perubahan' : 'Tambah Hutang'}
                 </Button>
               </div>
@@ -471,58 +564,69 @@ export default function KalkulatorHutang() {
         </CardContent>
       </Card>
 
-       <Card className="shadow-xl rounded-xl">
-        <CardHeader className="border-b border-border p-4">
-          <CardTitle className="text-xl md:text-2xl font-semibold text-primary-foreground">Daftar Hutang</CardTitle>
+       <Card className="shadow-2xl rounded-xl overflow-hidden border-none bg-card/80 backdrop-blur-sm">
+        <CardHeader className="border-b border-border/20 p-4 md:p-6 bg-secondary/30">
+          <CardTitle className="text-2xl md:text-3xl font-semibold text-secondary-foreground drop-shadow-sm">Daftar Hutang</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
            <div className="overflow-x-auto">
              <Table>
-               <TableHeader>
-                 <TableRow>
-                   <TableHead className="whitespace-nowrap px-4 py-3">Nama</TableHead>
-                   <TableHead className="whitespace-nowrap px-4 py-3">Tanggal</TableHead>
-                   <TableHead className="whitespace-nowrap px-4 py-3">Deskripsi</TableHead>
-                   <TableHead className="text-right whitespace-nowrap px-4 py-3">Nominal</TableHead>
-                   <TableHead className="text-center whitespace-nowrap px-4 py-3">Status</TableHead>
-                   <TableHead className="text-right whitespace-nowrap px-4 py-3">Aksi</TableHead>
+               <TableHeader className="bg-muted/30">
+                 <TableRow className="border-b-border/30">
+                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Foto</TableHead>
+                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Nama</TableHead>
+                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Tanggal</TableHead>
+                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Deskripsi</TableHead>
+                   <TableHead className="text-right whitespace-nowrap px-4 py-3 font-semibold text-muted-foreground">Nominal</TableHead>
+                   <TableHead className="text-center whitespace-nowrap px-4 py-3 font-semibold text-muted-foreground">Status</TableHead>
+                   <TableHead className="text-right whitespace-nowrap px-4 py-3 font-semibold text-muted-foreground">Aksi</TableHead>
                  </TableRow>
                </TableHeader>
                <TableBody>
                  {isLoadingHutang ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-                        Memuat data...
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                        <Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" />
+                        <p className="mt-2">Memuat data...</p>
                       </TableCell>
                     </TableRow>
                  ) : daftarHutang.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                       Belum ada data hutang.
+                     <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                       <ImageUp className="mx-auto h-12 w-12 text-muted-foreground/70 mb-2" />
+                       Belum ada data hutang. <br/> Silakan tambahkan hutang baru di atas.
                      </TableCell>
                    </TableRow>
                  ) : (
                    daftarHutang.map((hutang) => (
-                     <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150 even:bg-muted/20">
-                       <TableCell className="font-medium px-4 py-3">{hutang.nama}</TableCell>
-                       <TableCell className="px-4 py-3">{hutang.tanggal instanceof Date && !isNaN(hutang.tanggal.getTime()) ? format(hutang.tanggal, 'dd MMMM yyyy', { locale: id }) : 'Invalid Date'}</TableCell>
+                     <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150 ease-in-out even:bg-background/30 dark:even:bg-muted/10 border-b-border/20">
+                       <TableCell className="px-4 py-3">
+                         {hutang.fotoDataUri ? (
+                           <img src={hutang.fotoDataUri} alt={`Foto ${hutang.nama}`} className="h-16 w-16 object-cover rounded-md shadow-md border border-border/20" />
+                         ) : (
+                           <div className="h-16 w-16 bg-muted/40 rounded-md flex items-center justify-center shadow-sm border border-border/20">
+                             <ImageUp className="h-8 w-8 text-muted-foreground/50" />
+                           </div>
+                         )}
+                       </TableCell>
+                       <TableCell className="font-medium px-4 py-3 text-foreground/90">{hutang.nama}</TableCell>
+                       <TableCell className="px-4 py-3 text-foreground/80">{hutang.tanggal instanceof Date && !isNaN(hutang.tanggal.getTime()) ? format(hutang.tanggal, 'dd MMMM yyyy', { locale: id }) : 'Invalid Date'}</TableCell>
                        <TableCell className="max-w-xs truncate text-muted-foreground px-4 py-3">{hutang.deskripsi || '-'}</TableCell>
-                       <TableCell className="text-right px-4 py-3">{formatCurrency(hutang.nominal)}</TableCell>
+                       <TableCell className="text-right px-4 py-3 font-medium text-foreground/90">{formatCurrency(hutang.nominal)}</TableCell>
                         <TableCell className="text-center px-4 py-3">
                            <span className={cn(
-                              "px-3 py-1 rounded-full text-xs font-semibold shadow-sm",
+                              "px-3 py-1.5 rounded-full text-xs font-semibold shadow-md border border-opacity-30",
                               getStatusClass(hutang.status)
                             )}>
                               {hutang.status}
                            </span>
                        </TableCell>
                        <TableCell className="text-right space-x-1 px-4 py-3">
-                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-yellow-500 hover:text-yellow-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
+                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-yellow-500 hover:text-yellow-600 hover:bg-yellow-500/10 h-9 w-9 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
                            <Edit2 className="h-4 w-4" />
                            <span className="sr-only">Edit</span>
                          </Button>
-                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-red-500 hover:text-red-600 h-9 w-9 rounded-md shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
+                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-red-500 hover:text-red-600 hover:bg-red-500/10 h-9 w-9 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
                            <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Hapus</span>
                          </Button>
@@ -534,8 +638,8 @@ export default function KalkulatorHutang() {
              </Table>
            </div>
         </CardContent>
-         <CardFooter className="flex justify-end bg-secondary p-4 rounded-b-xl border-t border-border mt-0">
-          <div className="text-lg md:text-xl font-bold text-secondary-foreground">
+         <CardFooter className="flex justify-end bg-secondary/50 p-4 md:p-6 rounded-b-xl border-t border-border/20 mt-0">
+          <div className="text-lg md:text-xl font-bold text-secondary-foreground drop-shadow-sm">
             Total Hutang (Belum/Sebagian Lunas): {formatCurrency(totalHutang)}
           </div>
         </CardFooter>

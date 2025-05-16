@@ -27,14 +27,7 @@ export function useHutang() {
     queryFn: () =>
       new Promise<Hutang[]>((resolve, reject) => {
         const hutangRef = ref(rtdb, HUTANG_PATH);
-        // Order by tanggal. Note: RTDB stores dates typically as ISO strings or numbers.
-        // For robust sorting, ensure tanggal is stored consistently (e.g., ISO string).
-        // If using numbers (timestamps), default numeric sorting works.
-        // For string dates, they must be in a sortable format like YYYY-MM-DD.
-        // Here, we'll sort client-side after fetching if complex server-side sort isn't straightforward or needed.
-        // Or use orderByChild('tanggal') if 'tanggal' is a consistently formatted string/number.
         const queryRef = rtdbQuery(hutangRef, orderByChild('tanggal'));
-
 
         return onValue(
           queryRef,
@@ -47,18 +40,18 @@ export function useHutang() {
                   return {
                     id,
                     nama: hutangDoc.nama,
-                    tanggal: new Date(hutangDoc.tanggal), // Convert ISO string/number to Date
+                    tanggal: new Date(hutangDoc.tanggal),
                     nominal: hutangDoc.nominal,
                     status: hutangDoc.status,
                     deskripsi: hutangDoc.deskripsi || '',
+                    fotoDataUri: hutangDoc.fotoDataUri,
                   };
                 }
               );
-              // Sort descending by date client-side
               hutangList.sort((a, b) => b.tanggal.getTime() - a.tanggal.getTime());
               resolve(hutangList);
             } else {
-              resolve([]); // No data
+              resolve([]);
             }
           },
           (error) => {
@@ -66,7 +59,7 @@ export function useHutang() {
             reject(error);
           },
           {
-            onlyOnce: false // Set to true if you don't need real-time updates after initial fetch for this hook
+            onlyOnce: false
           }
         );
       }),
@@ -76,13 +69,14 @@ export function useHutang() {
 // Type for adding new hutang
 export interface AddHutangInput extends Omit<Hutang, 'id'> {}
 // Type for updating hutang
-export interface UpdateHutangInput extends Partial<Omit<Hutang, 'id' | 'nama'>> { // nama should not be updatable this way to avoid merging issues
+export interface UpdateHutangInput extends Partial<Omit<Hutang, 'id' | 'nama'>> {
   id: string;
-  nama?: string; // Allow updating name if needed, but handle merging logic carefully
+  nama?: string;
   nominal?: number;
   tanggal?: Date;
   status?: StatusHutangValue;
   deskripsi?: string;
+  fotoDataUri?: string;
 }
 
 
@@ -94,12 +88,13 @@ export function useAddHutang() {
       const hutangRef = ref(rtdb, HUTANG_PATH);
       const docToSave: HutangDocument = {
         ...newHutang,
-        tanggal: newHutang.tanggal.toISOString(), // Store date as ISO string
+        tanggal: newHutang.tanggal.toISOString(),
         deskripsi: newHutang.deskripsi || '',
+        fotoDataUri: newHutang.fotoDataUri,
         // createdAt: serverTimestamp(), // Optional: for server-side timestamp
       };
       const newPostRef = push(hutangRef);
-      return rtdbUpdate(newPostRef, docToSave); // Using update to set data with generated key
+      return rtdbUpdate(newPostRef, docToSave);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [HUTANG_QUERY_KEY] });
@@ -121,11 +116,13 @@ export function useUpdateHutang() {
       if (updatedData.nama !== undefined) dataToUpdate.nama = updatedData.nama;
       if (updatedData.nominal !== undefined) dataToUpdate.nominal = updatedData.nominal;
       if (updatedData.status !== undefined) dataToUpdate.status = updatedData.status;
-      if (updatedData.deskripsi !== undefined) dataToUpdate.deskripsi = updatedData.deskripsi;
-      else if (updatedData.deskripsi === undefined && Object.prototype.hasOwnProperty.call(updatedData, 'deskripsi')) {
-         dataToUpdate.deskripsi = ''; // Handle explicitly setting to empty string
+      
+      if (Object.prototype.hasOwnProperty.call(updatedData, 'deskripsi')) {
+         dataToUpdate.deskripsi = updatedData.deskripsi || '';
       }
-
+      if (Object.prototype.hasOwnProperty.call(updatedData, 'fotoDataUri')) {
+        dataToUpdate.fotoDataUri = updatedData.fotoDataUri || undefined;
+      }
 
       if (updatedData.tanggal) {
         dataToUpdate.tanggal = updatedData.tanggal.toISOString();
@@ -159,8 +156,6 @@ export function useDeleteHutang() {
   });
 }
 
-// Function to find existing hutang by name (not lunas)
-// This logic remains client-side and should work with the Hutang[] array from useHutang
 export function findExistingHutangByName(
   hutangList: Hutang[] | undefined,
   name: string
