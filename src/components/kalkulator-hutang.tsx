@@ -3,7 +3,7 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'; // Added useMemo
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -138,36 +138,52 @@ export default function KalkulatorHutang() {
   const [isImageViewDialogOpen, setIsImageViewDialogOpen] = useState(false);
   const { toast } = useToast();
 
+  const defaultFormValues = useMemo(() => ({
+    nama: '',
+    tanggal: new Date(),
+    nominal: 0,
+    status: StatusHutang.BELUM_LUNAS,
+    deskripsi: '',
+    fotoDataUri: undefined,
+  }), []);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      nama: '',
-      tanggal: new Date(),
-      nominal: 0, // Stored as number, displayed as string
-      status: StatusHutang.BELUM_LUNAS,
-      deskripsi: '',
-      fotoDataUri: undefined,
-    },
+    defaultValues: defaultFormValues,
   });
-  const { setValue, getValues } = form;
+  const { setValue, getValues, control } = form;
 
    useEffect(() => {
-    if (!editingId) {
+    if (!editingId) { // Not editing, potentially new form
         const today = new Date();
-        setInitialDate(today);
-        const currentFormDate = getValues('tanggal');
-        if (!(currentFormDate instanceof Date) || !currentFormDate || currentFormDate.toDateString() !== today.toDateString()) {
+        
+        // Sync initialDate for calendar display
+        if (!initialDate || initialDate.toDateString() !== today.toDateString()) {
+            setInitialDate(today);
+        }
+
+        // Sync form's 'tanggal' field
+        const currentFormTanggal = getValues('tanggal');
+        if (!(currentFormTanggal instanceof Date) || isNaN(currentFormTanggal.getTime()) || currentFormTanggal.toDateString() !== today.toDateString()) {
             setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
         }
-    } else {
+    } else { // Editing mode
         const hutangToEdit = daftarHutang.find(h => h.id === editingId);
         if (hutangToEdit) {
             const editDate = new Date(hutangToEdit.tanggal);
-            setInitialDate(editDate);
-            setImagePreview(hutangToEdit.fotoDataUri || null);
+            // Sync initialDate for calendar display
+            if (!initialDate || initialDate.getTime() !== editDate.getTime()) {
+                setInitialDate(editDate);
+            }
+            // Sync imagePreview
+            const newImagePreview = hutangToEdit.fotoDataUri || null;
+            if (imagePreview !== newImagePreview) {
+                setImagePreview(newImagePreview);
+            }
+            // Form fields are reset by form.reset() in handleEdit
         }
     }
-  }, [editingId, daftarHutang, setValue, getValues]);
+  }, [editingId, daftarHutang, getValues, setValue, initialDate, imagePreview]);
 
 
   const hitungTotalHutang = useCallback(() => {
@@ -182,6 +198,21 @@ export default function KalkulatorHutang() {
     hitungTotalHutang();
   }, [daftarHutang, hitungTotalHutang]);
 
+  const resetFormAndState = () => {
+    const today = new Date();
+    form.reset({
+      nama: '',
+      tanggal: today, 
+      nominal: 0, 
+      status: StatusHutang.BELUM_LUNAS,
+      deskripsi: '',
+      fotoDataUri: undefined,
+    });
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setInitialDate(today); 
+  };
+
 
   const executeAdd = async (data: FormValues) => {
     const existingHutang = findExistingHutangByName(daftarHutang, data.nama);
@@ -193,7 +224,7 @@ export default function KalkulatorHutang() {
           id: existingHutang.id,
           nominal: existingHutang.nominal + data.nominal, 
           tanggal: data.tanggal,
-          status: data.nominal >= existingHutang.nominal + data.nominal ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS, // Auto-adjust status
+          status: data.nominal >= existingHutang.nominal + data.nominal ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
           fotoDataUri: finalFotoDataUri,
         };
@@ -205,22 +236,12 @@ export default function KalkulatorHutang() {
       } else {
          const addPayload: AddHutangInput = {
           ...data,
-          fotoDataUri: finalFotoDataUri, // Ensure fotoDataUri is included
+          fotoDataUri: finalFotoDataUri, 
         };
         await addHutangMutation.mutateAsync(addPayload);
         toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
       }
-      form.reset({
-        nama: '',
-        tanggal: new Date(), 
-        nominal: 0, 
-        status: StatusHutang.BELUM_LUNAS,
-        deskripsi: '',
-        fotoDataUri: undefined,
-      });
-      setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setInitialDate(new Date()); 
+      resetFormAndState();
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menambahkan/memperbarui hutang.', variant: 'destructive' });
       console.error("RTDB add/update error:", error);
@@ -232,22 +253,12 @@ export default function KalkulatorHutang() {
       const updatePayload: UpdateHutangInput = { 
         id, 
         ...data, 
-        nominal: data.nominal, // Ensure nominal is passed as number
+        nominal: data.nominal, 
       }; 
       await updateHutangMutation.mutateAsync(updatePayload);
       toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
       setEditingId(null);
-      form.reset({
-        nama: '',
-        tanggal: new Date(), 
-        nominal: 0, 
-        status: StatusHutang.BELUM_LUNAS,
-        deskripsi: '',
-        fotoDataUri: undefined,
-      });
-      setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setInitialDate(new Date());
+      resetFormAndState();
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal memperbarui hutang.', variant: 'destructive' });
       console.error("RTDB update error:", error);
@@ -288,25 +299,15 @@ export default function KalkulatorHutang() {
       ...hutang,
       tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
-      nominal: hutang.nominal, // Pass as number
+      nominal: hutang.nominal, 
       fotoDataUri: hutang.fotoDataUri || undefined,
     });
-    // setImagePreview is handled by useEffect based on editingId
+    // initialDate and imagePreview are synced by useEffect based on editingId and daftarHutang
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
-    form.reset({
-      nama: '',
-      tanggal: new Date(), 
-      nominal: 0, 
-      status: StatusHutang.BELUM_LUNAS,
-      deskripsi: '',
-      fotoDataUri: undefined,
-    });
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setInitialDate(new Date());
+    resetFormAndState();
   };
 
   const handlePasswordConfirm = async () => {
@@ -401,7 +402,7 @@ export default function KalkulatorHutang() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 items-start">
                 <FormField
-                  control={form.control}
+                  control={control}
                   name="nama"
                   render={({ field }) => (
                     <FormItem>
@@ -414,7 +415,7 @@ export default function KalkulatorHutang() {
                   )}
                 />
                 <FormField
-                  control={form.control}
+                  control={control}
                   name="tanggal"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
@@ -447,7 +448,6 @@ export default function KalkulatorHutang() {
                             onSelect={(date) => {
                               if (date) {
                                 field.onChange(date);
-                                // setInitialDate(date); // Removed to prevent potential update loops
                               }
                             }}
                             disabled={(date) =>
@@ -463,7 +463,7 @@ export default function KalkulatorHutang() {
                   )}
                 />
                 <FormField
-                  control={form.control}
+                  control={control}
                   name="nominal"
                   render={({ field: { onChange, value, ...restField } }) => (
                     <FormItem>
@@ -483,7 +483,7 @@ export default function KalkulatorHutang() {
                                     }
                               onChange={(e) => {
                                 const rawValue = e.target.value.replace(/[^0-9]/g, '');
-                                onChange(rawValue); // Pass the raw string to RHF
+                                onChange(rawValue); 
                               }}
                               {...restField}
                               className="pl-8 rounded-lg shadow-inner bg-background/70 border-border/50 focus:border-accent focus:ring-accent"
@@ -495,7 +495,7 @@ export default function KalkulatorHutang() {
                   )}
                 />
                  <FormField
-                  control={form.control}
+                  control={control}
                   name="status"
                   render={({ field }) => (
                     <FormItem>
@@ -519,7 +519,7 @@ export default function KalkulatorHutang() {
                   )}
                 />
                  <FormField
-                  control={form.control}
+                  control={control}
                   name="deskripsi"
                   render={({ field }) => (
                     <FormItem className="md:col-span-2">
@@ -536,7 +536,7 @@ export default function KalkulatorHutang() {
                   )}
                 />
                 <FormField
-                  control={form.control}
+                  control={control}
                   name="fotoDataUri"
                   render={({ field }) => (
                     <FormItem className="md:col-span-2">
