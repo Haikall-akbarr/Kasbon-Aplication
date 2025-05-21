@@ -76,7 +76,7 @@ export interface UpdateHutangInput extends Partial<Omit<Hutang, 'id' | 'nama'>> 
   tanggal?: Date;
   status?: StatusHutangValue;
   deskripsi?: string;
-  fotoDataUri?: string;
+  fotoDataUri?: string | null; // Allow null for explicit removal
 }
 
 
@@ -87,13 +87,19 @@ export function useAddHutang() {
     mutationFn: async (newHutang: AddHutangInput) => {
       const hutangRef = ref(rtdb, HUTANG_PATH);
       const docToSave: HutangDocument = {
-        ...newHutang,
+        nama: newHutang.nama,
         tanggal: newHutang.tanggal.toISOString(),
+        nominal: newHutang.nominal,
+        status: newHutang.status,
         deskripsi: newHutang.deskripsi || '',
-        fotoDataUri: newHutang.fotoDataUri,
+        // Ensure fotoDataUri is string or null, not undefined
+        fotoDataUri: (typeof newHutang.fotoDataUri === 'string' && newHutang.fotoDataUri.trim() !== '') ? newHutang.fotoDataUri : null,
         // createdAt: serverTimestamp(), // Optional: for server-side timestamp
       };
       const newPostRef = push(hutangRef);
+      // For new entries, Firebase handles undefined fields by not saving them,
+      // but explicitly setting to null is cleaner if that's the intent for "no image".
+      // rtdbUpdate is used by push().set() essentially.
       return rtdbUpdate(newPostRef, docToSave);
     },
     onSuccess: () => {
@@ -120,8 +126,11 @@ export function useUpdateHutang() {
       if (Object.prototype.hasOwnProperty.call(updatedData, 'deskripsi')) {
          dataToUpdate.deskripsi = updatedData.deskripsi || '';
       }
+      
+      // Handle fotoDataUri: if property exists in updatedData, set it to the value or null.
+      // This ensures 'undefined' is not passed to Firebase.
       if (Object.prototype.hasOwnProperty.call(updatedData, 'fotoDataUri')) {
-        dataToUpdate.fotoDataUri = updatedData.fotoDataUri || undefined;
+        dataToUpdate.fotoDataUri = (typeof updatedData.fotoDataUri === 'string' && updatedData.fotoDataUri.trim() !== '') ? updatedData.fotoDataUri : null;
       }
 
       if (updatedData.tanggal) {
@@ -165,3 +174,4 @@ export function findExistingHutangByName(
     (h) => h.nama.toLowerCase() === name.toLowerCase() && h.status !== StatusHutang.LUNAS
   );
 }
+
