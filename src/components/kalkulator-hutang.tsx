@@ -3,7 +3,7 @@
 'use client';
 
 import type React from 'react';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'; // Added useMemo
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -151,36 +151,31 @@ export default function KalkulatorHutang() {
     resolver: zodResolver(formSchema),
     defaultValues: defaultFormValues,
   });
-  const { setValue, getValues, control } = form;
+  const { setValue, getValues, control, reset } = form;
 
    useEffect(() => {
-    if (!editingId) { // Not editing, potentially new form
+    if (!editingId) { 
         const today = new Date();
         
-        // Sync initialDate for calendar display
         if (!initialDate || initialDate.toDateString() !== today.toDateString()) {
             setInitialDate(today);
         }
 
-        // Sync form's 'tanggal' field
         const currentFormTanggal = getValues('tanggal');
         if (!(currentFormTanggal instanceof Date) || isNaN(currentFormTanggal.getTime()) || currentFormTanggal.toDateString() !== today.toDateString()) {
             setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
         }
-    } else { // Editing mode
+    } else { 
         const hutangToEdit = daftarHutang.find(h => h.id === editingId);
         if (hutangToEdit) {
             const editDate = new Date(hutangToEdit.tanggal);
-            // Sync initialDate for calendar display
             if (!initialDate || initialDate.getTime() !== editDate.getTime()) {
                 setInitialDate(editDate);
             }
-            // Sync imagePreview
             const newImagePreview = hutangToEdit.fotoDataUri || null;
             if (imagePreview !== newImagePreview) {
                 setImagePreview(newImagePreview);
             }
-            // Form fields are reset by form.reset() in handleEdit
         }
     }
   }, [editingId, daftarHutang, getValues, setValue, initialDate, imagePreview]);
@@ -198,20 +193,20 @@ export default function KalkulatorHutang() {
     hitungTotalHutang();
   }, [daftarHutang, hitungTotalHutang]);
 
-  const resetFormAndState = () => {
+  const resetFormAndState = useCallback(() => {
     const today = new Date();
-    form.reset({
+    reset({
       nama: '',
-      tanggal: today, 
-      nominal: 0, 
+      tanggal: today,
+      nominal: 0,
       status: StatusHutang.BELUM_LUNAS,
       deskripsi: '',
       fotoDataUri: undefined,
     });
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    setInitialDate(today); 
-  };
+    setInitialDate(today);
+  }, [reset]);
 
 
   const executeAdd = async (data: FormValues) => {
@@ -220,22 +215,39 @@ export default function KalkulatorHutang() {
 
     try {
       if (existingHutang && existingHutang.id) {
+        let newNominal: number;
+        let newStatus: StatusHutangValue;
+        let toastMessage: string;
+
+        if (data.status === StatusHutang.LUNAS) { // Form input indicates a payment
+          newNominal = Math.max(0, existingHutang.nominal - data.nominal);
+          newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS;
+          toastMessage = `Pembayaran untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
+          if (newStatus === StatusHutang.LUNAS) {
+            toastMessage = `Hutang untuk ${data.nama} telah lunas.`;
+          }
+        } else { // Form input indicates adding more debt or setting to BELUM_LUNAS/LUNAS_SEBAGIAN
+          newNominal = existingHutang.nominal + data.nominal;
+          newStatus = StatusHutang.BELUM_LUNAS; // Adding more debt ensures it's not LUNAS
+          toastMessage = `Tambahan hutang untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
+        }
+
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
-          nominal: existingHutang.nominal + data.nominal, 
-          tanggal: data.tanggal,
-          status: data.nominal >= existingHutang.nominal + data.nominal ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS,
+          nominal: newNominal,
+          tanggal: data.tanggal, // Use the date from the current form submission
+          status: newStatus,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
           fotoDataUri: finalFotoDataUri,
         };
         await updateHutangMutation.mutateAsync(updatePayload);
         toast({
           title: 'Sukses',
-          description: `Jumlah hutang untuk ${data.nama} berhasil diperbarui.`,
+          description: toastMessage,
         });
       } else {
          const addPayload: AddHutangInput = {
-          ...data,
+          ...data, // This includes data.nominal and data.status from the form
           fotoDataUri: finalFotoDataUri, 
         };
         await addHutangMutation.mutateAsync(addPayload);
@@ -302,7 +314,6 @@ export default function KalkulatorHutang() {
       nominal: hutang.nominal, 
       fotoDataUri: hutang.fotoDataUri || undefined,
     });
-    // initialDate and imagePreview are synced by useEffect based on editingId and daftarHutang
   };
 
   const handleCancelEdit = () => {
@@ -332,7 +343,7 @@ export default function KalkulatorHutang() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // Batas 5MB
+      if (file.size > 5 * 1024 * 1024) { 
         toast({
           title: "Ukuran File Terlalu Besar",
           description: "Ukuran file maksimal adalah 5MB.",
@@ -448,6 +459,7 @@ export default function KalkulatorHutang() {
                             onSelect={(date) => {
                               if (date) {
                                 field.onChange(date);
+                                // setInitialDate(date); // Removed to prevent potential loops
                               }
                             }}
                             disabled={(date) =>
@@ -479,7 +491,7 @@ export default function KalkulatorHutang() {
                               placeholder="Contoh: 50000"
                               value={ (value === 0 && !form.formState.dirtyFields.nominal && !editingId && typeof value === 'number')
                                       ? ''
-                                      : typeof value === 'number' ? value.toLocaleString('id-ID') : value || ''
+                                      : typeof value === 'string' ? parseInt(value,10).toLocaleString('id-ID') : (typeof value === 'number' ? value.toLocaleString('id-ID') : '')
                                     }
                               onChange={(e) => {
                                 const rawValue = e.target.value.replace(/[^0-9]/g, '');
