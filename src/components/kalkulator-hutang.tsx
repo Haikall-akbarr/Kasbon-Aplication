@@ -222,14 +222,14 @@ export default function KalkulatorHutang() {
 
         if (data.status === StatusHutang.LUNAS) {
           newNominal = Math.max(0, existingHutang.nominal - data.nominal);
-          newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS; // Adjusted status
+          newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS;
           toastMessage = `Pembayaran untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
           if (newStatus === StatusHutang.LUNAS) {
             toastMessage = `Hutang untuk ${data.nama} telah lunas.`;
           }
-        } else { // Status BELUM_LUNAS atau LUNAS_SEBAGIAN saat menambah/memperbarui hutang yg ada
+        } else { 
           newNominal = existingHutang.nominal + data.nominal;
-          newStatus = StatusHutang.BELUM_LUNAS; // Tetap BELUM_LUNAS jika ada penambahan
+          newStatus = StatusHutang.BELUM_LUNAS;
           toastMessage = `Tambahan hutang untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
         }
 
@@ -764,6 +764,7 @@ export default function KalkulatorHutang() {
         <Dialog open={isImageViewDialogOpen} onOpenChange={setIsImageViewDialogOpen}>
           <DialogContent className="max-w-3xl p-2 sm:p-4 border-none shadow-xl rounded-xl overflow-hidden bg-background/90 backdrop-blur-md">
             <DialogHeader className="p-1 absolute top-1 right-1 z-10">
+               <DialogTitle className="sr-only">Pratinjau Gambar</DialogTitle>
                <DialogClose asChild>
                 <Button variant="ghost" size="icon" className="text-foreground/70 hover:text-foreground hover:bg-background/70 rounded-full h-8 w-8 sm:h-9 sm:w-9">
                   <XCircle className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -805,3 +806,4 @@ export default function KalkulatorHutang() {
     </div>
   );
 }
+
