@@ -132,7 +132,7 @@ export default function KalkulatorHutang() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [initialDate, setInitialDate] = useState<Date | undefined>(undefined);
+  const [initialDate, setInitialDate] = useState<Date | undefined>(new Date()); // Initialize with current date
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImagesForView, setSelectedImagesForView] = useState<string[] | null>(null);
@@ -160,24 +160,32 @@ export default function KalkulatorHutang() {
    useEffect(() => {
     if (!editingId) {
         const today = new Date();
+        // Only update initialDate if it's not already today or if form is being reset
         if (!initialDate || initialDate.toDateString() !== today.toDateString()) {
-            setInitialDate(today);
+             setInitialDate(today);
         }
         const currentFormTanggal = getValues('tanggal');
+        // Set form date only if it's not a valid date or not today
         if (!(currentFormTanggal instanceof Date) || isNaN(currentFormTanggal.getTime()) || currentFormTanggal.toDateString() !== today.toDateString()) {
             setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
         }
     } else {
+        // When editing, set initialDate from the item being edited
         const hutangToEdit = daftarHutang.find(h => h.id === editingId);
         if (hutangToEdit) {
             const editDate = new Date(hutangToEdit.tanggal);
             if (!initialDate || initialDate.getTime() !== editDate.getTime()) {
-                setInitialDate(editDate);
+                 setInitialDate(editDate);
+            }
+             // Ensure form value is also set, as defaultValues might not run if form is already initialized
+            if (getValues('tanggal').getTime() !== editDate.getTime()){
+                setValue('tanggal', editDate, { shouldValidate: true, shouldDirty: true });
             }
             setImagePreviews(hutangToEdit.fotoDataUris || []);
         }
     }
   }, [editingId, daftarHutang, getValues, setValue, initialDate]);
+
 
   useEffect(() => {
     setImagePreviews(currentFotoDataUris || []);
@@ -198,57 +206,63 @@ export default function KalkulatorHutang() {
 
   const resetFormAndState = useCallback(() => {
     const today = new Date();
-    reset(defaultFormValues);
+    reset(defaultFormValues); // Reset with memoized default values
     setImagePreviews([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    setInitialDate(today);
-    setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
+    setInitialDate(today); // Explicitly set initialDate to today after reset
+    setValue('tanggal', today, { shouldValidate: true, shouldDirty: false }); // Ensure form field is also today
   }, [reset, defaultFormValues, setValue]);
 
 
   const executeAdd = async (data: FormValues) => {
     const existingHutang = findExistingHutangByName(daftarHutang, data.nama);
     let finalFotoDataUris = data.fotoDataUris || [];
-    if (existingHutang && existingHutang.fotoDataUris && existingHutang.fotoDataUris.length > 0 && finalFotoDataUris.length === 0) {
-        finalFotoDataUris = existingHutang.fotoDataUris;
-    }
 
 
     try {
       if (existingHutang && existingHutang.id) {
+        // If adding and name exists, it's an update (payment or adding more debt)
         let newNominal: number;
         let newStatus: StatusHutangValue;
         let toastMessage: string;
 
-        if (data.status === StatusHutang.LUNAS) {
+        // Combine photos: existing + new, avoid duplicates if any (simple concat for now)
+        const combinedFotoDataUris = Array.from(new Set([
+          ...(existingHutang.fotoDataUris || []),
+          ...(data.fotoDataUris || [])
+        ]));
+
+        if (data.status === StatusHutang.LUNAS) { // Treat as payment
           newNominal = Math.max(0, existingHutang.nominal - data.nominal);
-          newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS;
+          newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS; // Or LUNAS_SEBAGIAN if you add that logic
           toastMessage = `Pembayaran untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
           if (newStatus === StatusHutang.LUNAS) {
             toastMessage = `Hutang untuk ${data.nama} telah lunas.`;
           }
-        } else { 
+        } else { // Treat as adding more debt
           newNominal = existingHutang.nominal + data.nominal;
-          newStatus = StatusHutang.BELUM_LUNAS;
+          newStatus = StatusHutang.BELUM_LUNAS; // Adding more debt means it's not fully lunas
           toastMessage = `Tambahan hutang untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
         }
 
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
-          nama: existingHutang.nama,
+          nama: existingHutang.nama, // Keep original name
           nominal: newNominal,
-          tanggal: data.tanggal,
+          tanggal: data.tanggal, // Update to latest transaction date
           status: newStatus,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
-          fotoDataUris: finalFotoDataUris.length > 0 ? finalFotoDataUris : null,
+          fotoDataUris: combinedFotoDataUris.length > 0 ? combinedFotoDataUris : null,
         };
         await updateHutangMutation.mutateAsync(updatePayload);
         toast({
           title: 'Sukses',
           description: toastMessage,
         });
+
       } else {
-         const addPayload: AddHutangInput = {
+         // If name doesn't exist or existing is LUNAS, add as new entry
+        const addPayload: AddHutangInput = {
           ...data,
           fotoDataUris: finalFotoDataUris.length > 0 ? finalFotoDataUris : [],
         };
@@ -316,7 +330,8 @@ export default function KalkulatorHutang() {
       nominal: String(hutang.nominal) as any, 
       fotoDataUris: hutang.fotoDataUris || [],
     });
-    setImagePreviews(hutang.fotoDataUris || []);
+    // initialDate will be set by useEffect
+    setImagePreviews(hutang.fotoDataUris || []); // Also directly set imagePreviews for immediate feedback
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -377,9 +392,9 @@ export default function KalkulatorHutang() {
       form.setValue('fotoDataUris', newFotoDataUris, { shouldValidate: true, shouldDirty: true });
       // setImagePreviews will be updated by useEffect watching currentFotoDataUris
       if (fileInputRef.current && hasError) {
-        fileInputRef.current.value = ""; // Reset if any file caused an error to prevent re-selection of same errored file
+        fileInputRef.current.value = ""; 
       } else if (fileInputRef.current) {
-        fileInputRef.current.value = ""; // Always reset to allow re-selection of same files if user wants
+        fileInputRef.current.value = ""; 
       }
     }
   };
@@ -397,7 +412,6 @@ export default function KalkulatorHutang() {
     const currentUris = getValues('fotoDataUris') || [];
     const updatedUris = currentUris.filter((_, index) => index !== indexToRemove);
     form.setValue('fotoDataUris', updatedUris, { shouldValidate: true, shouldDirty: true });
-    // setImagePreviews will update via useEffect
   };
 
 
@@ -493,7 +507,7 @@ export default function KalkulatorHutang() {
                             >
                               {(field.value instanceof Date && !isNaN(field.value.getTime())) ? (
                                 format(field.value, 'PPP', { locale: id })
-                              ) : initialDate ? (
+                              ) : initialDate ? ( // Fallback to initialDate for display if field.value is not yet set or invalid
                                 format(initialDate, 'PPP', { locale: id })
                               ) : (
                                 <span>Pilih tanggal</span>
@@ -507,8 +521,9 @@ export default function KalkulatorHutang() {
                             mode="single"
                             selected={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value : initialDate}
                             onSelect={(date) => {
-                              if (date) {
+                               if (date) {
                                 field.onChange(date);
+                                // No need to setInitialDate here, initialDate is for initial rendering or reset
                               }
                             }}
                             disabled={(date) =>
@@ -666,7 +681,7 @@ export default function KalkulatorHutang() {
             </div>
           ) : daftarHutang.length === 0 ? (
             <div className="text-center text-muted-foreground py-16">
-              <Camera className="mx-auto h-16 w-16 text-muted-foreground/70 mb-4" />
+              <ImagesIcon className="mx-auto h-16 w-16 text-muted-foreground/70 mb-4" /> {/* Changed Icon */}
               <p className="text-xl font-medium">Belum ada data hutang.</p>
               <p className="text-sm">Silakan tambahkan hutang baru menggunakan form di atas.</p>
             </div>
@@ -766,7 +781,7 @@ export default function KalkulatorHutang() {
             <DialogHeader className="p-1 absolute top-1 right-1 z-10">
                <DialogTitle className="sr-only">Pratinjau Gambar</DialogTitle>
                <DialogClose asChild>
-                <Button variant="ghost" size="icon" className="text-foreground/70 hover:text-foreground hover:bg-background/70 rounded-full h-8 w-8 sm:h-9 sm:w-9">
+                <Button size="icon" className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full h-8 w-8 sm:h-9 sm:w-9">
                   <XCircle className="h-5 w-5 sm:h-6 sm:w-6" />
                   <span className="sr-only">Tutup</span>
                 </Button>
