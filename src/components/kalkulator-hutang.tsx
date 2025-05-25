@@ -7,21 +7,22 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { CalendarIcon, PlusCircle, Trash2, Edit2, Loader2, ImageUp, XCircle, Eye } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2, Edit2, Loader2, ImageUp, XCircle, Eye, ListChecks, CreditCard, Info, AlertTriangle, UserCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+// Table components are no longer the primary display method for the list
+// import {
+//   Table,
+//   TableBody,
+//   TableCell,
+//   TableHead,
+//   TableHeader,
+//   TableRow,
+// } from '@/components/ui/table';
 import {
   Card,
   CardContent,
@@ -74,6 +75,8 @@ import {
 } from '@/hooks/useHutang';
 import type { Hutang, StatusHutangValue } from '@/types/hutang';
 import { StatusHutang } from '@/types/hutang';
+import { Badge } from '@/components/ui/badge';
+
 
 // Define the Zod schema for form validation
 const formSchema = z.object({
@@ -151,21 +154,19 @@ export default function KalkulatorHutang() {
     resolver: zodResolver(formSchema),
     defaultValues: defaultFormValues,
   });
-  const { setValue, getValues, control, reset } = form;
+  const { setValue, getValues, control, reset, formState } = form;
 
    useEffect(() => {
-    if (!editingId) { 
+    if (!editingId) {
         const today = new Date();
-        
         if (!initialDate || initialDate.toDateString() !== today.toDateString()) {
             setInitialDate(today);
         }
-
         const currentFormTanggal = getValues('tanggal');
         if (!(currentFormTanggal instanceof Date) || isNaN(currentFormTanggal.getTime()) || currentFormTanggal.toDateString() !== today.toDateString()) {
             setValue('tanggal', today, { shouldValidate: true, shouldDirty: false });
         }
-    } else { 
+    } else {
         const hutangToEdit = daftarHutang.find(h => h.id === editingId);
         if (hutangToEdit) {
             const editDate = new Date(hutangToEdit.tanggal);
@@ -195,23 +196,17 @@ export default function KalkulatorHutang() {
 
   const resetFormAndState = useCallback(() => {
     const today = new Date();
-    reset({
-      nama: '',
-      tanggal: today,
-      nominal: 0,
-      status: StatusHutang.BELUM_LUNAS,
-      deskripsi: '',
-      fotoDataUri: undefined,
-    });
+    reset(defaultFormValues); // Use memoized default values
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    setInitialDate(today);
-  }, [reset]);
+    setInitialDate(today); // Explicitly set initialDate again if needed after reset
+    setValue('tanggal', today, { shouldValidate: true, shouldDirty: false }); // ensure date is reset
+  }, [reset, defaultFormValues, setValue]);
 
 
   const executeAdd = async (data: FormValues) => {
     const existingHutang = findExistingHutangByName(daftarHutang, data.nama);
-    const finalFotoDataUri = data.fotoDataUri || (existingHutang ? existingHutang.fotoDataUri : undefined);
+    const finalFotoDataUri = data.fotoDataUri || (existingHutang ? existingHutang.fotoDataUri : null);
 
     try {
       if (existingHutang && existingHutang.id) {
@@ -219,23 +214,24 @@ export default function KalkulatorHutang() {
         let newStatus: StatusHutangValue;
         let toastMessage: string;
 
-        if (data.status === StatusHutang.LUNAS) { // Form input indicates a payment
+        if (data.status === StatusHutang.LUNAS) {
           newNominal = Math.max(0, existingHutang.nominal - data.nominal);
           newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS;
           toastMessage = `Pembayaran untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
           if (newStatus === StatusHutang.LUNAS) {
             toastMessage = `Hutang untuk ${data.nama} telah lunas.`;
           }
-        } else { // Form input indicates adding more debt or setting to BELUM_LUNAS/LUNAS_SEBAGIAN
+        } else {
           newNominal = existingHutang.nominal + data.nominal;
-          newStatus = StatusHutang.BELUM_LUNAS; // Adding more debt ensures it's not LUNAS
+          newStatus = StatusHutang.BELUM_LUNAS;
           toastMessage = `Tambahan hutang untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
         }
 
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
+          nama: existingHutang.nama, // keep original name
           nominal: newNominal,
-          tanggal: data.tanggal, // Use the date from the current form submission
+          tanggal: data.tanggal,
           status: newStatus,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
           fotoDataUri: finalFotoDataUri,
@@ -247,8 +243,8 @@ export default function KalkulatorHutang() {
         });
       } else {
          const addPayload: AddHutangInput = {
-          ...data, // This includes data.nominal and data.status from the form
-          fotoDataUri: finalFotoDataUri, 
+          ...data,
+          fotoDataUri: finalFotoDataUri,
         };
         await addHutangMutation.mutateAsync(addPayload);
         toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
@@ -262,11 +258,11 @@ export default function KalkulatorHutang() {
 
   const executeEdit = async (data: FormValues, id: string) => {
     try {
-      const updatePayload: UpdateHutangInput = { 
-        id, 
-        ...data, 
-        nominal: data.nominal, 
-      }; 
+      const updatePayload: UpdateHutangInput = {
+        id,
+        ...data,
+        fotoDataUri: data.fotoDataUri || null, // Ensure null if undefined
+      };
       await updateHutangMutation.mutateAsync(updatePayload);
       toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
       setEditingId(null);
@@ -293,9 +289,9 @@ export default function KalkulatorHutang() {
 
   const onSubmit: SubmitHandler<FormValues> = (data) => {
     if (editingId) {
-      setPendingAction({ type: 'edit', data: { ...data, nominal: data.nominal }, id: editingId });
+      setPendingAction({ type: 'edit', data, id: editingId });
     } else {
-      setPendingAction({ type: 'add', data: { ...data, nominal: data.nominal } });
+      setPendingAction({ type: 'add', data });
     }
     setIsPasswordDialogOpen(true);
   };
@@ -311,9 +307,11 @@ export default function KalkulatorHutang() {
       ...hutang,
       tanggal: new Date(hutang.tanggal),
       deskripsi: hutang.deskripsi || '',
-      nominal: hutang.nominal, 
+      nominal: String(hutang.nominal) as any, // Zod transform expects string
       fotoDataUri: hutang.fotoDataUri || undefined,
     });
+    setImagePreview(hutang.fotoDataUri || null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
@@ -343,13 +341,13 @@ export default function KalkulatorHutang() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { 
+      if (file.size > 5 * 1024 * 1024) {
         toast({
           title: "Ukuran File Terlalu Besar",
           description: "Ukuran file maksimal adalah 5MB.",
           variant: "destructive",
         });
-        if(fileInputRef.current) fileInputRef.current.value = ""; 
+        if(fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
       const reader = new FileReader();
@@ -376,15 +374,28 @@ export default function KalkulatorHutang() {
  const getStatusClass = (status: StatusHutangValue) => {
     switch (status) {
       case StatusHutang.LUNAS:
-        return 'text-green-600 bg-green-100 dark:text-green-300 dark:bg-green-900';
+        return 'bg-green-600 text-green-50 border-green-700';
       case StatusHutang.LUNAS_SEBAGIAN:
-        return 'text-yellow-600 bg-yellow-100 dark:text-yellow-300 dark:bg-yellow-900';
+        return 'bg-yellow-500 text-yellow-50 border-yellow-600';
       case StatusHutang.BELUM_LUNAS:
-        return 'text-red-600 bg-red-100 dark:text-red-300 dark:bg-red-900';
+        return 'bg-red-600 text-red-50 border-red-700';
       default:
-        return 'text-foreground bg-background';
+        return 'bg-muted text-muted-foreground border-border';
     }
   };
+  const getStatusIcon = (status: StatusHutangValue) => {
+    switch (status) {
+      case StatusHutang.LUNAS:
+        return <ListChecks className="h-4 w-4 mr-1.5" />;
+      case StatusHutang.LUNAS_SEBAGIAN:
+        return <CreditCard className="h-4 w-4 mr-1.5" />;
+      case StatusHutang.BELUM_LUNAS:
+        return <AlertTriangle className="h-4 w-4 mr-1.5" />;
+      default:
+        return <Info className="h-4 w-4 mr-1.5" />;
+    }
+  };
+
 
   const handleViewImage = (imageUrl: string) => {
     setSelectedImageForView(imageUrl);
@@ -459,7 +470,6 @@ export default function KalkulatorHutang() {
                             onSelect={(date) => {
                               if (date) {
                                 field.onChange(date);
-                                // setInitialDate(date); // Removed to prevent potential loops
                               }
                             }}
                             disabled={(date) =>
@@ -486,16 +496,16 @@ export default function KalkulatorHutang() {
                              Rp
                            </span>
                            <Input
-                              type="text" 
-                              inputMode="numeric" 
+                              type="text"
+                              inputMode="numeric"
                               placeholder="Contoh: 50000"
-                              value={ (value === 0 && !form.formState.dirtyFields.nominal && !editingId && typeof value === 'number')
+                              value={ (value === 0 && !formState.dirtyFields.nominal && !editingId && typeof value === 'number')
                                       ? ''
-                                      : typeof value === 'string' ? parseInt(value,10).toLocaleString('id-ID') : (typeof value === 'number' ? value.toLocaleString('id-ID') : '')
+                                      : typeof value === 'string' ? parseInt(value.replace(/[^0-9]/g, ''),10).toLocaleString('id-ID') : (typeof value === 'number' ? value.toLocaleString('id-ID') : '')
                                     }
                               onChange={(e) => {
                                 const rawValue = e.target.value.replace(/[^0-9]/g, '');
-                                onChange(rawValue); 
+                                onChange(rawValue);
                               }}
                               {...restField}
                               className="pl-8 rounded-lg shadow-inner bg-background/70 border-border/50 focus:border-accent focus:ring-accent"
@@ -564,7 +574,7 @@ export default function KalkulatorHutang() {
                           />
                           {imagePreview && (
                             <div className="mt-2 p-2 border border-border/50 rounded-lg shadow-sm bg-background/50 relative group">
-                              <img src={imagePreview} alt="Pratinjau Gambar" className="h-32 w-32 object-cover rounded-md" />
+                              <img src={imagePreview} alt="Pratinjau Gambar" className="h-32 w-32 object-cover rounded-md" data-ai-hint="preview image" />
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -604,86 +614,92 @@ export default function KalkulatorHutang() {
         </CardContent>
       </Card>
 
-       <Card className="shadow-2xl rounded-xl overflow-hidden border-none bg-card/80 backdrop-blur-sm">
+      {/* Daftar Hutang Section - Changed to Card Layout */}
+      <Card className="shadow-2xl rounded-xl overflow-hidden border-none bg-card/80 backdrop-blur-sm">
         <CardHeader className="border-b border-border/20 p-4 md:p-6 bg-secondary/30">
           <CardTitle className="text-2xl md:text-3xl font-semibold text-secondary-foreground drop-shadow-sm">Daftar Hutang</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
-           <div className="overflow-x-auto">
-             <Table>
-               <TableHeader className="bg-muted/30">
-                 <TableRow className="border-b-border/30">
-                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Foto</TableHead>
-                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Nama</TableHead>
-                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Tanggal</TableHead>
-                   <TableHead className="whitespace-nowrap px-4 py-3 text-left font-semibold text-muted-foreground">Deskripsi</TableHead>
-                   <TableHead className="text-right whitespace-nowrap px-4 py-3 font-semibold text-muted-foreground">Nominal</TableHead>
-                   <TableHead className="text-center whitespace-nowrap px-4 py-3 font-semibold text-muted-foreground">Status</TableHead>
-                   <TableHead className="text-right whitespace-nowrap px-4 py-3 font-semibold text-muted-foreground">Aksi</TableHead>
-                 </TableRow>
-               </TableHeader>
-               <TableBody>
-                 {isLoadingHutang ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
-                        <Loader2 className="mx-auto h-10 w-10 animate-spin text-primary" />
-                        <p className="mt-2">Memuat data...</p>
-                      </TableCell>
-                    </TableRow>
-                 ) : daftarHutang.length === 0 ? (
-                   <TableRow>
-                     <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
-                       <ImageUp className="mx-auto h-12 w-12 text-muted-foreground/70 mb-2" />
-                       Belum ada data hutang. <br/> Silakan tambahkan hutang baru di atas.
-                     </TableCell>
-                   </TableRow>
-                 ) : (
-                   daftarHutang.map((hutang) => (
-                     <TableRow key={hutang.id} className="hover:bg-muted/50 transition-colors duration-150 ease-in-out even:bg-background/30 dark:even:bg-muted/10 border-b-border/20">
-                       <TableCell className="px-4 py-3">
-                         {hutang.fotoDataUri ? (
-                           <div className="relative group cursor-pointer" onClick={() => hutang.fotoDataUri && handleViewImage(hutang.fotoDataUri)}>
-                             <img src={hutang.fotoDataUri} alt={`Foto ${hutang.nama}`} className="h-16 w-16 object-cover rounded-md shadow-md border border-border/20" />
-                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
-                                <Eye className="h-6 w-6 text-white" />
-                              </div>
-                           </div>
-                         ) : (
-                           <div className="h-16 w-16 bg-muted/40 rounded-md flex items-center justify-center shadow-sm border border-border/20">
-                             <ImageUp className="h-8 w-8 text-muted-foreground/50" />
-                           </div>
-                         )}
-                       </TableCell>
-                       <TableCell className="font-medium px-4 py-3 text-foreground/90">{hutang.nama}</TableCell>
-                       <TableCell className="px-4 py-3 text-foreground/80">{hutang.tanggal instanceof Date && !isNaN(hutang.tanggal.getTime()) ? format(hutang.tanggal, 'dd MMMM yyyy', { locale: id }) : 'Invalid Date'}</TableCell>
-                       <TableCell className="max-w-xs truncate text-muted-foreground px-4 py-3">{hutang.deskripsi || '-'}</TableCell>
-                       <TableCell className="text-right px-4 py-3 font-medium text-foreground/90">{formatCurrency(hutang.nominal)}</TableCell>
-                        <TableCell className="text-center px-4 py-3">
-                           <span className={cn(
-                              "px-3 py-1.5 rounded-full text-xs font-semibold shadow-md border border-opacity-30",
-                              getStatusClass(hutang.status)
-                            )}>
-                              {hutang.status}
-                           </span>
-                       </TableCell>
-                       <TableCell className="text-right space-x-1 px-4 py-3">
-                         <Button variant="ghost" size="icon" onClick={() => handleEdit(hutang)} className="text-yellow-500 hover:text-yellow-600 hover:bg-yellow-500/10 h-9 w-9 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
-                           <Edit2 className="h-4 w-4" />
-                           <span className="sr-only">Edit</span>
-                         </Button>
-                         <Button variant="ghost" size="icon" onClick={() => handleDelete(hutang.id)} className="text-red-500 hover:text-red-600 hover:bg-red-500/10 h-9 w-9 rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
-                           <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Hapus</span>
-                         </Button>
-                       </TableCell>
-                     </TableRow>
-                   ))
-                 )}
-               </TableBody>
-             </Table>
-           </div>
+        <CardContent className="p-4 md:p-6">
+          {isLoadingHutang ? (
+            <div className="text-center text-muted-foreground py-12">
+              <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary mb-4" />
+              <p className="text-lg">Memuat data hutang...</p>
+            </div>
+          ) : daftarHutang.length === 0 ? (
+            <div className="text-center text-muted-foreground py-16">
+              <ImageUp className="mx-auto h-16 w-16 text-muted-foreground/70 mb-4" />
+              <p className="text-xl font-medium">Belum ada data hutang.</p>
+              <p className="text-sm">Silakan tambahkan hutang baru menggunakan form di atas.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {daftarHutang.map((hutang) => (
+                <Card key={hutang.id} className="flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg bg-background/70 border-border/50">
+                  <CardHeader className="p-4 border-b border-border/30">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl font-semibold text-foreground truncate" title={hutang.nama}>
+                        <UserCircle className="inline-block h-5 w-5 mr-2 text-primary" />
+                        {hutang.nama}
+                      </CardTitle>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "px-2.5 py-1 text-xs font-semibold rounded-full flex items-center whitespace-nowrap",
+                          getStatusClass(hutang.status)
+                        )}
+                      >
+                        {getStatusIcon(hutang.status)}
+                        {hutang.status}
+                      </Badge>
+                    </div>
+                    <CardDescription className="text-xs text-muted-foreground pt-1">
+                      {hutang.tanggal instanceof Date && !isNaN(hutang.tanggal.getTime()) ? format(hutang.tanggal, 'dd MMMM yyyy, HH:mm', { locale: id }) : 'Invalid Date'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-4 flex-grow space-y-3">
+                    {hutang.fotoDataUri && (
+                      <div className="relative group cursor-pointer aspect-video rounded-md overflow-hidden shadow-md border border-border/20" onClick={() => hutang.fotoDataUri && handleViewImage(hutang.fotoDataUri)}>
+                        <img src={hutang.fotoDataUri} alt={`Foto ${hutang.nama}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" data-ai-hint="debt item image"/>
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
+                          <Eye className="h-8 w-8 text-white" />
+                        </div>
+                      </div>
+                    )}
+                    {!hutang.fotoDataUri && (
+                         <div className="aspect-video bg-muted/40 rounded-md flex items-center justify-center shadow-sm border border-border/20">
+                           <ImageUp className="h-12 w-12 text-muted-foreground/50" />
+                         </div>
+                    )}
+                     <div className="space-y-1">
+                        <p className="text-2xl font-bold text-accent text-right">{formatCurrency(hutang.nominal)}</p>
+                        {hutang.deskripsi && (
+                           <p className="text-sm text-muted-foreground line-clamp-2" title={hutang.deskripsi}>
+                             <strong>Deskripsi:</strong> {hutang.deskripsi}
+                           </p>
+                        )}
+                        {!hutang.deskripsi && (
+                            <p className="text-sm text-muted-foreground italic">Tidak ada deskripsi.</p>
+                        )}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="p-3 border-t border-border/30 bg-muted/20">
+                    <div className="flex w-full justify-end space-x-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(hutang)} className="text-yellow-600 border-yellow-500 hover:bg-yellow-100 hover:text-yellow-700 dark:text-yellow-400 dark:border-yellow-600 dark:hover:bg-yellow-700 dark:hover:text-yellow-50 rounded-md shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
+                        <Edit2 className="h-4 w-4 mr-1.5" />
+                        Edit
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(hutang.id)} className="bg-red-600 hover:bg-red-700 text-red-50 rounded-md shadow-sm hover:shadow-md transition-all disabled:opacity-50" disabled={isMutating}>
+                        <Trash2 className="h-4 w-4 mr-1.5" />
+                        Hapus
+                      </Button>
+                    </div>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
         </CardContent>
-         <CardFooter className="flex justify-end bg-secondary/50 p-4 md:p-6 rounded-b-xl border-t border-border/20 mt-0">
+        <CardFooter className="flex justify-end bg-secondary/50 p-4 md:p-6 rounded-b-xl border-t border-border/20 mt-0">
           <div className="text-lg md:text-xl font-bold text-secondary-foreground drop-shadow-sm">
             Total Hutang (Belum/Sebagian Lunas): {formatCurrency(totalHutang)}
           </div>
@@ -716,6 +732,7 @@ export default function KalkulatorHutang() {
                 src={selectedImageForView}
                 alt="Pratinjau Gambar Diperbesar"
                 className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                data-ai-hint="enlarged image"
               />
             </div>
           </DialogContent>
@@ -724,3 +741,4 @@ export default function KalkulatorHutang() {
     </div>
   );
 }
+
