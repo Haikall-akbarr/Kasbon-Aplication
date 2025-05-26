@@ -234,22 +234,22 @@ export default function KalkulatorHutang() {
 
         if (data.status === StatusHutang.LUNAS) { // Treat as payment
           newNominal = Math.max(0, existingHutang.nominal - data.nominal);
-          newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS; // Or LUNAS_SEBAGIAN if you add that logic
+          newStatus = newNominal <= 0 ? StatusHutang.LUNAS : StatusHutang.BELUM_LUNAS; 
           toastMessage = `Pembayaran untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
           if (newStatus === StatusHutang.LUNAS) {
             toastMessage = `Hutang untuk ${data.nama} telah lunas.`;
           }
-        } else { // Treat as adding more debt
+        } else { // Treat as adding more debt (or changing status from LUNAS to BELUM_LUNAS/LUNAS_SEBAGIAN with the same/new nominal)
           newNominal = existingHutang.nominal + data.nominal;
-          newStatus = StatusHutang.BELUM_LUNAS; // Adding more debt means it's not fully lunas
+          newStatus = StatusHutang.BELUM_LUNAS; 
           toastMessage = `Tambahan hutang untuk ${data.nama} berhasil dicatat. Saldo hutang diperbarui.`;
         }
 
         const updatePayload: UpdateHutangInput = {
           id: existingHutang.id,
-          nama: existingHutang.nama, // Keep original name
+          nama: existingHutang.nama, 
           nominal: newNominal,
-          tanggal: data.tanggal, // Update to latest transaction date
+          tanggal: data.tanggal, 
           status: newStatus,
           deskripsi: `${existingHutang.deskripsi || ''}${existingHutang.deskripsi && data.deskripsi ? '; ' : ''}${data.deskripsi || ''}`.trim(),
           fotoDataUris: combinedFotoDataUris.length > 0 ? combinedFotoDataUris : null,
@@ -258,16 +258,16 @@ export default function KalkulatorHutang() {
         toast({
           title: 'Sukses',
           description: toastMessage,
+          variant: 'success',
         });
 
       } else {
-         // If name doesn't exist or existing is LUNAS, add as new entry
         const addPayload: AddHutangInput = {
           ...data,
           fotoDataUris: finalFotoDataUris.length > 0 ? finalFotoDataUris : [],
         };
         await addHutangMutation.mutateAsync(addPayload);
-        toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.' });
+        toast({ title: 'Sukses', description: 'Data hutang baru berhasil ditambahkan.', variant: 'success' });
       }
       resetFormAndState();
     } catch (error) {
@@ -284,7 +284,7 @@ export default function KalkulatorHutang() {
         fotoDataUris: (data.fotoDataUris && data.fotoDataUris.length > 0) ? data.fotoDataUris : null,
       };
       await updateHutangMutation.mutateAsync(updatePayload);
-      toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.' });
+      toast({ title: 'Sukses', description: 'Data hutang berhasil diperbarui.', variant: 'success' });
       setEditingId(null);
       resetFormAndState();
     } catch (error) {
@@ -299,7 +299,7 @@ export default function KalkulatorHutang() {
       toast({
         title: 'Terhapus',
         description: 'Data hutang telah dihapus.',
-        variant: 'destructive',
+        variant: 'destructive', 
       });
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal menghapus hutang.', variant: 'destructive' });
@@ -330,8 +330,7 @@ export default function KalkulatorHutang() {
       nominal: String(hutang.nominal) as any, 
       fotoDataUris: hutang.fotoDataUris || [],
     });
-    // initialDate will be set by useEffect
-    setImagePreviews(hutang.fotoDataUris || []); // Also directly set imagePreviews for immediate feedback
+    setImagePreviews(hutang.fotoDataUris || []); 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -390,7 +389,6 @@ export default function KalkulatorHutang() {
       }
       
       form.setValue('fotoDataUris', newFotoDataUris, { shouldValidate: true, shouldDirty: true });
-      // setImagePreviews will be updated by useEffect watching currentFotoDataUris
       if (fileInputRef.current && hasError) {
         fileInputRef.current.value = ""; 
       } else if (fileInputRef.current) {
@@ -507,7 +505,7 @@ export default function KalkulatorHutang() {
                             >
                               {(field.value instanceof Date && !isNaN(field.value.getTime())) ? (
                                 format(field.value, 'PPP', { locale: id })
-                              ) : initialDate ? ( // Fallback to initialDate for display if field.value is not yet set or invalid
+                              ) : initialDate ? ( 
                                 format(initialDate, 'PPP', { locale: id })
                               ) : (
                                 <span>Pilih tanggal</span>
@@ -523,7 +521,6 @@ export default function KalkulatorHutang() {
                             onSelect={(date) => {
                                if (date) {
                                 field.onChange(date);
-                                // No need to setInitialDate here, initialDate is for initial rendering or reset
                               }
                             }}
                             disabled={(date) =>
@@ -622,7 +619,7 @@ export default function KalkulatorHutang() {
                           <Input
                             type="file"
                             accept="image/*"
-                            multiple // Allow multiple file selection
+                            multiple 
                             ref={fileInputRef}
                             onChange={handleFileChange}
                             className="rounded-lg shadow-inner bg-background/70 border-border/50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/80 file:text-primary-foreground hover:file:bg-primary cursor-pointer focus:border-accent focus:ring-accent"
@@ -681,7 +678,7 @@ export default function KalkulatorHutang() {
             </div>
           ) : daftarHutang.length === 0 ? (
             <div className="text-center text-muted-foreground py-16">
-              <ImagesIcon className="mx-auto h-16 w-16 text-muted-foreground/70 mb-4" /> {/* Changed Icon */}
+              <ImagesIcon className="mx-auto h-16 w-16 text-muted-foreground/70 mb-4" /> 
               <p className="text-xl font-medium">Belum ada data hutang.</p>
               <p className="text-sm">Silakan tambahkan hutang baru menggunakan form di atas.</p>
             </div>
